@@ -16,3 +16,5 @@ services:
         fromDatabase:
           name: alexastock-db
           property: connectionString
+      - key: PYTHON_VERSION
+        value: 3.11.9
