@@ -1,0 +1,18 @@
+databases:
+  - name: alexastock-db
+    plan: free
+    databaseName: alexastock
+    user: alexastock
+
+services:
+  - type: web
+    name: alexastock
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: alexastock-db
+          property: connectionString
