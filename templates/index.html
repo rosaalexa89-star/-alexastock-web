@@ -607,13 +607,32 @@ async function borrarProducto(id, nombre) {
 
 // ---- Hoja: nuevo producto ----
 
+function pintarSelectCategorias(categorias) {
+  const select = document.getElementById('prodCategoria');
+  select.innerHTML = categorias.map(c => `<option value="${c}">${c}</option>`).join('')
+    + '<option value="__nueva__">➕ Nueva categoría…</option>';
+}
+
+async function manejarNuevaCategoria() {
+  const select = document.getElementById('prodCategoria');
+  const nombre = prompt('Nombre de la nueva categoría:');
+
+  if (nombre && nombre.trim()) {
+    await api('/api/categorias', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({nombre})});
+    const categorias = await api('/api/categorias');
+    pintarSelectCategorias(categorias);
+    select.value = nombre.trim();
+  } else if (select.options.length > 1) {
+    select.selectedIndex = 0;
+  }
+}
+
 async function abrirNuevoProducto() {
   const select = document.getElementById('prodCategoria');
   select.innerHTML = '<option>Cargando…</option>';
 
   const categorias = await api('/api/categorias');
-  select.innerHTML = categorias.map(c => `<option value="${c}">${c}</option>`).join('')
-    + '<option value="__nueva__">➕ Nueva categoría…</option>';
+  pintarSelectCategorias(categorias);
 
   document.getElementById('prodNombre').value = '';
   document.getElementById('prodCosto').value = 0;
@@ -623,21 +642,19 @@ async function abrirNuevoProducto() {
   document.getElementById('prodError').style.display = 'none';
 
   abrirHoja('hojaProducto', 'fondoHojaProducto');
+
+  // Si todavía no hay ninguna categoría cargada, la única opción del
+  // combo es "Nueva categoría…" y ya está seleccionada por defecto —
+  // el navegador no avisa un "cambio" porque no cambió nada. Por eso
+  // disparamos la acción a mano en ese caso puntual.
+  if (categorias.length === 0) {
+    await manejarNuevaCategoria();
+  }
 }
 
-document.getElementById('prodCategoria').addEventListener('change', async (e) => {
+document.getElementById('prodCategoria').addEventListener('change', (e) => {
   if (e.target.value === '__nueva__') {
-    const nombre = prompt('Nombre de la nueva categoría:');
-    if (nombre && nombre.trim()) {
-      await api('/api/categorias', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({nombre})});
-      const categorias = await api('/api/categorias');
-      const select = document.getElementById('prodCategoria');
-      select.innerHTML = categorias.map(c => `<option value="${c}">${c}</option>`).join('')
-        + '<option value="__nueva__">➕ Nueva categoría…</option>';
-      select.value = nombre.trim();
-    } else {
-      e.target.selectedIndex = 0;
-    }
+    manejarNuevaCategoria();
   }
 });
 
@@ -724,13 +741,31 @@ async function borrarCompra(id) {
 
 let productosParaSelect = [];
 
+function pintarSelectProductosCompra() {
+  const select = document.getElementById('compraProducto');
+  select.innerHTML = productosParaSelect.map(p => `<option value="${p.id}">${p.nombre} (Stock: ${p.stock})</option>`).join('')
+    + '<option value="__nuevo__">➕ Agregar producto nuevo</option>';
+}
+
+async function manejarNuevoProductoDesdeCompra() {
+  cerrarHoja('hojaCompra', 'fondoHojaCompra');
+  await abrirNuevoProducto();
+
+  // Al guardar el producto nuevo, reabrimos la compra automáticamente:
+  const boton = document.getElementById('btnGuardarProducto');
+  const volver = () => {
+    boton.removeEventListener('click', volver);
+    setTimeout(abrirNuevaCompra, 200);
+  };
+  boton.addEventListener('click', volver);
+}
+
 async function abrirNuevaCompra() {
   const select = document.getElementById('compraProducto');
   select.innerHTML = '<option>Cargando…</option>';
 
   productosParaSelect = await api('/api/productos');
-  select.innerHTML = productosParaSelect.map(p => `<option value="${p.id}">${p.nombre} (Stock: ${p.stock})</option>`).join('')
-    + '<option value="__nuevo__">➕ Agregar producto nuevo</option>';
+  pintarSelectProductosCompra();
 
   document.getElementById('compraCantidad').value = 1;
   document.getElementById('compraPrecio').value = 0;
@@ -740,18 +775,18 @@ async function abrirNuevaCompra() {
   compraSetMoneda('ARS');
 
   abrirHoja('hojaCompra', 'fondoHojaCompra');
+
+  // Mismo caso que con categorías: si no hay ningún producto todavía,
+  // la única opción es "Agregar producto nuevo" y ya está seleccionada,
+  // así que el navegador no dispara "change". Lo forzamos a mano.
+  if (productosParaSelect.length === 0) {
+    await manejarNuevoProductoDesdeCompra();
+  }
 }
 
-document.getElementById('compraProducto').addEventListener('change', async (e) => {
+document.getElementById('compraProducto').addEventListener('change', (e) => {
   if (e.target.value === '__nuevo__') {
-    cerrarHoja('hojaCompra', 'fondoHojaCompra');
-    await abrirNuevoProducto();
-    // Al guardar el producto nuevo, reabrimos la compra automáticamente:
-    const original = document.getElementById('btnGuardarProducto').onclick;
-    document.getElementById('btnGuardarProducto').addEventListener('click', async function volver() {
-      document.getElementById('btnGuardarProducto').removeEventListener('click', volver);
-      setTimeout(abrirNuevaCompra, 200);
-    });
+    manejarNuevoProductoDesdeCompra();
   }
 });
 
