@@ -211,6 +211,37 @@ def agregar_producto(nombre, categoria, costo, precio_venta, stock, stock_minimo
         conexion.close()
 
 
+def editar_producto(producto_id, nombre, categoria, costo, precio_venta, stock, stock_minimo):
+    conexion = conectar()
+    cursor = conexion.cursor()
+
+    try:
+        if not nombre or not nombre.strip():
+            return False, "Ingresá el nombre del producto."
+
+        cursor.execute("""
+            UPDATE productos
+            SET nombre = %s, categoria = %s, costo = %s, precio_venta = %s,
+                stock = %s, stock_minimo = %s
+            WHERE id = %s
+        """, (nombre.strip(), categoria, costo, precio_venta, stock, stock_minimo, producto_id))
+
+        if cursor.rowcount == 0:
+            conexion.rollback()
+            return False, "El producto no existe."
+
+        conexion.commit()
+        return True, "Producto actualizado correctamente."
+
+    except Exception as error:
+        conexion.rollback()
+        return False, f"Error al editar el producto: {error}"
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+
 def eliminar_producto(producto_id):
     conexion = conectar()
     cursor = conexion.cursor()
