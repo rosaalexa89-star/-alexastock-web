@@ -1,12 +1,63 @@
-from flask import Flask, render_template, request, jsonify
+import os
+from datetime import timedelta
+from functools import wraps
+
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 
 import database
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "cambiar-esta-clave")
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+
+USUARIO_VALIDO = os.environ.get("APP_USUARIO", "admin")
+CLAVE_VALIDA = os.environ.get("APP_CLAVE", "admin")
 
 # Se crean las tablas al arrancar la app (si ya existen, no hace nada).
 with app.app_context():
     database.crear_tablas()
+
+
+@app.before_request
+def verificar_sesion():
+    # Estas rutas quedan libres (sin sesión iniciada): la pantalla de
+    # login en sí, y los archivos estáticos (CSS/JS si los hubiera).
+    rutas_publicas = {"login"}
+
+    if request.endpoint in rutas_publicas:
+        return
+
+    if request.endpoint and request.endpoint.startswith("static"):
+        return
+
+    if not session.get("logueado"):
+        if request.path.startswith("/api/"):
+            return jsonify({"ok": False, "mensaje": "Sesión expirada. Volvé a iniciar sesión."}), 401
+        return redirect(url_for("login"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+
+    if request.method == "POST":
+        usuario = request.form.get("usuario", "")
+        clave = request.form.get("clave", "")
+
+        if usuario == USUARIO_VALIDO and clave == CLAVE_VALIDA:
+            session.permanent = True
+            session["logueado"] = True
+            return redirect(url_for("index"))
+
+        error = "Usuario o clave incorrectos."
+
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 # ============================================================
