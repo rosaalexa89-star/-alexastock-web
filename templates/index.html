@@ -269,7 +269,8 @@
   <div class="fondo-hoja" id="fondoHojaProducto"></div>
   <div class="hoja" id="hojaProducto">
     <div class="hoja-agarre"></div>
-    <h3>Nuevo producto</h3>
+    <h3 id="prodHojaTitulo">Nuevo producto</h3>
+    <input type="hidden" id="prodId" value="">
     <div class="campo">
       <label>Nombre</label>
       <input type="text" id="prodNombre" placeholder="Ej: Toallón beige">
@@ -386,6 +387,7 @@
     <div class="hoja-agarre"></div>
     <h3 id="detalleTitulo">Detalle</h3>
     <div id="detalleContenido"></div>
+    <button class="btn-guardar" id="btnEditarDesdeDetalle" style="display:none;">✏️ Editar</button>
     <button class="btn-guardar" id="btnCerrarDetalle" style="background:var(--ink-soft);margin-top:16px;">Cerrar</button>
   </div>
 
@@ -480,13 +482,27 @@ document.getElementById('btnFab').addEventListener('click', () => {
 // DETALLE (al tocar un producto, compra o venta)
 // ============================================================
 
-function mostrarDetalle(titulo, filas) {
+function mostrarDetalle(titulo, filas, onEditar) {
   document.getElementById('detalleTitulo').textContent = titulo;
   document.getElementById('detalleContenido').innerHTML = filas.map(([etiqueta, valor]) => `
     <div style="display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px dashed var(--line);">
       <span style="color:var(--ink-soft);font-size:13px;">${etiqueta}</span>
       <span style="font-weight:600;font-size:13.5px;text-align:right;">${valor}</span>
     </div>`).join('');
+
+  const btnEditar = document.getElementById('btnEditarDesdeDetalle');
+
+  if (onEditar) {
+    btnEditar.style.display = '';
+    btnEditar.onclick = () => {
+      cerrarHoja('hojaDetalle', 'fondoHojaDetalle');
+      onEditar();
+    };
+  } else {
+    btnEditar.style.display = 'none';
+    btnEditar.onclick = null;
+  }
+
   abrirHoja('hojaDetalle', 'fondoHojaDetalle');
 }
 
@@ -505,7 +521,29 @@ function verDetalleProducto(id) {
     ['Ganancia por unidad', dinero(p.precio_venta - p.costo)],
     ['Stock actual', p.stock],
     ['Stock mínimo', p.stock_minimo]
-  ]);
+  ], () => abrirEditarProducto(p));
+}
+
+async function abrirEditarProducto(producto) {
+  const select = document.getElementById('prodCategoria');
+  select.innerHTML = '<option>Cargando…</option>';
+
+  const categorias = await api('/api/categorias');
+  pintarSelectCategorias(categorias);
+
+  document.getElementById('prodHojaTitulo').textContent = 'Editar producto';
+  document.getElementById('prodId').value = producto.id;
+  document.getElementById('prodNombre').value = producto.nombre;
+  document.getElementById('prodCategoria').value = producto.categoria || '';
+  document.getElementById('prodCosto').value = producto.costo;
+  document.getElementById('prodPrecio').value = producto.precio_venta;
+  document.getElementById('prodStock').value = producto.stock;
+  document.getElementById('prodStockMinimo').value = producto.stock_minimo;
+  document.getElementById('prodError').style.display = 'none';
+  document.getElementById('campoStockInicial').style.display = '';
+  document.getElementById('campoCostoInicial').style.display = '';
+
+  abrirHoja('hojaProducto', 'fondoHojaProducto');
 }
 
 function verDetalleCompra(id) {
@@ -721,6 +759,8 @@ async function abrirNuevoProducto(desdeCompra = false) {
   const categorias = await api('/api/categorias');
   pintarSelectCategorias(categorias);
 
+  document.getElementById('prodHojaTitulo').textContent = 'Nuevo producto';
+  document.getElementById('prodId').value = '';
   document.getElementById('prodNombre').value = '';
   document.getElementById('prodCosto').value = 0;
   document.getElementById('prodPrecio').value = 0;
@@ -756,19 +796,30 @@ document.getElementById('btnGuardarProducto').addEventListener('click', async ()
   const errorEl = document.getElementById('prodError');
   errorEl.style.display = 'none';
 
+  const id = document.getElementById('prodId').value;
+  const datos = {
+    nombre: document.getElementById('prodNombre').value,
+    categoria: document.getElementById('prodCategoria').value,
+    costo: document.getElementById('prodCosto').value,
+    precio_venta: document.getElementById('prodPrecio').value,
+    stock: document.getElementById('prodStock').value,
+    stock_minimo: document.getElementById('prodStockMinimo').value
+  };
+
   try {
-    await api('/api/productos', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        nombre: document.getElementById('prodNombre').value,
-        categoria: document.getElementById('prodCategoria').value,
-        costo: document.getElementById('prodCosto').value,
-        precio_venta: document.getElementById('prodPrecio').value,
-        stock: document.getElementById('prodStock').value,
-        stock_minimo: document.getElementById('prodStockMinimo').value
-      })
-    });
+    if (id) {
+      await api(`/api/productos/${id}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(datos)
+      });
+    } else {
+      await api('/api/productos', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(datos)
+      });
+    }
 
     cerrarHoja('hojaProducto', 'fondoHojaProducto');
     cargarInventario();
