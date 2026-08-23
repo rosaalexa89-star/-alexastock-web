@@ -46,6 +46,26 @@ def api_agregar_producto():
     return jsonify({"ok": False, "mensaje": mensaje}), 400
 
 
+@app.route("/api/productos/<int:producto_id>", methods=["PUT"])
+def api_editar_producto(producto_id):
+    datos = request.get_json(force=True)
+
+    exito, mensaje = database.editar_producto(
+        producto_id=producto_id,
+        nombre=datos.get("nombre", ""),
+        categoria=datos.get("categoria", ""),
+        costo=float(datos.get("costo", 0) or 0),
+        precio_venta=float(datos.get("precio_venta", 0) or 0),
+        stock=int(datos.get("stock", 0) or 0),
+        stock_minimo=int(datos.get("stock_minimo", 0) or 0),
+    )
+
+    if exito:
+        return jsonify({"ok": True, "mensaje": mensaje})
+
+    return jsonify({"ok": False, "mensaje": mensaje}), 400
+
+
 @app.route("/api/productos/<int:producto_id>", methods=["DELETE"])
 def api_eliminar_producto(producto_id):
     exito, mensaje = database.eliminar_producto(producto_id)
