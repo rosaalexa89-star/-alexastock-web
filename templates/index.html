@@ -380,6 +380,14 @@
     <p class="error-form" id="pagoError"></p>
     <button class="btn-guardar" id="btnGuardarPago">Registrar pago</button>
   </div>
+  <!-- ===================== HOJA: DETALLE (producto/compra/venta) ===================== -->
+  <div class="fondo-hoja" id="fondoHojaDetalle"></div>
+  <div class="hoja" id="hojaDetalle">
+    <div class="hoja-agarre"></div>
+    <h3 id="detalleTitulo">Detalle</h3>
+    <div id="detalleContenido"></div>
+    <button class="btn-guardar" id="btnCerrarDetalle" style="background:var(--ink-soft);margin-top:16px;">Cerrar</button>
+  </div>
 
 </div>
 
@@ -452,7 +460,7 @@ function cerrarHoja(idHoja, idFondo) {
   document.getElementById(idFondo).classList.remove('abierto');
 }
 
-['Producto', 'Compra', 'Venta', 'Pago'].forEach(nombre => {
+['Producto', 'Compra', 'Venta', 'Pago', 'Detalle'].forEach(nombre => {
   document.getElementById('fondoHoja' + nombre).addEventListener('click', () => {
     cerrarHoja('hoja' + nombre, 'fondoHoja' + nombre);
   });
@@ -467,6 +475,85 @@ document.getElementById('btnFab').addEventListener('click', () => {
   else if (vistaActiva === 'vista-ventas') abrirNuevaVenta();
   else abrirNuevaVenta(); // desde Inicio, la acción más común es cargar una venta
 });
+
+// ============================================================
+// DETALLE (al tocar un producto, compra o venta)
+// ============================================================
+
+function mostrarDetalle(titulo, filas) {
+  document.getElementById('detalleTitulo').textContent = titulo;
+  document.getElementById('detalleContenido').innerHTML = filas.map(([etiqueta, valor]) => `
+    <div style="display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px dashed var(--line);">
+      <span style="color:var(--ink-soft);font-size:13px;">${etiqueta}</span>
+      <span style="font-weight:600;font-size:13.5px;text-align:right;">${valor}</span>
+    </div>`).join('');
+  abrirHoja('hojaDetalle', 'fondoHojaDetalle');
+}
+
+document.getElementById('btnCerrarDetalle').addEventListener('click', () => {
+  cerrarHoja('hojaDetalle', 'fondoHojaDetalle');
+});
+
+function verDetalleProducto(id) {
+  const p = cacheProductos.find(x => x.id === id);
+  if (!p) return;
+
+  mostrarDetalle(p.nombre, [
+    ['Categoría', p.categoria || 'Sin categoría'],
+    ['Costo', dinero(p.costo)],
+    ['Precio de venta', dinero(p.precio_venta)],
+    ['Ganancia por unidad', dinero(p.precio_venta - p.costo)],
+    ['Stock actual', p.stock],
+    ['Stock mínimo', p.stock_minimo]
+  ]);
+}
+
+function verDetalleCompra(id) {
+  const c = cacheCompras.find(x => x.id === id);
+  if (!c) return;
+
+  const filas = [
+    ['Producto', c.producto_nombre],
+    ['Cantidad', c.cantidad],
+    ['Moneda', c.moneda]
+  ];
+
+  if (c.moneda === 'Bs') {
+    filas.push(['Precio unitario pagado', `${Number(c.precio_unitario_bs).toLocaleString('es-AR', {minimumFractionDigits: 2})} Bs`]);
+    filas.push(['Total pagado', `${Number(c.total_bs).toLocaleString('es-AR', {minimumFractionDigits: 2})} Bs`]);
+    filas.push(['Cotización usada', c.cotizacion]);
+  } else {
+    filas.push(['Precio unitario pagado', dinero(c.costo_unitario_ars)]);
+  }
+
+  filas.push(['Costo unitario (equivalente en $)', dinero(c.costo_unitario_ars)]);
+  filas.push(['Total (equivalente en $)', dinero(c.total_ars)]);
+  filas.push(['Proveedor', c.proveedor || 'Sin proveedor']);
+  filas.push(['Fecha', new Date(c.fecha).toLocaleString('es-AR')]);
+
+  mostrarDetalle('Detalle de compra', filas);
+}
+
+function verDetalleVenta(id) {
+  const v = cacheVentas.find(x => x.id === id);
+  if (!v) return;
+
+  const estado = v.saldo == 0 ? 'Pagado' : (v.pagado == 0 ? 'Pendiente' : 'Pago parcial');
+
+  mostrarDetalle('Detalle de venta', [
+    ['Producto', v.producto_nombre],
+    ['Cantidad', v.cantidad],
+    ['Precio unitario', dinero(v.precio_unitario)],
+    ['Total', dinero(v.total)],
+    ['Ganancia', dinero(v.ganancia)],
+    ['Medio de pago', v.medio_pago],
+    ['Cliente', v.cliente || 'Sin cliente'],
+    ['Pagado', dinero(v.pagado)],
+    ['Saldo', dinero(v.saldo)],
+    ['Estado', estado],
+    ['Fecha', new Date(v.fecha).toLocaleString('es-AR')]
+  ]);
+}
 
 // ============================================================
 // INICIO
@@ -572,7 +659,7 @@ function pintarInventario(productos) {
   cont.innerHTML = productos.map(p => {
     const bajo = p.stock_minimo > 0 && p.stock <= p.stock_minimo;
     return `
-      <div class="producto">
+      <div class="producto" onclick="verDetalleProducto(${p.id})" style="cursor:pointer;">
         <div class="swatch">📦</div>
         <div class="producto-info">
           <div class="producto-nombre">${p.nombre}</div>
@@ -582,7 +669,7 @@ function pintarInventario(productos) {
           <div class="producto-precio">${dinero(p.precio_venta)}</div>
           <span class="badge-stock ${bajo ? 'badge-bajo' : 'badge-ok'}">Stock: ${p.stock}</span>
         </div>
-        <button class="btn-borrar" onclick="borrarProducto(${p.id}, '${p.nombre.replace(/'/g, "\\'")}')">🗑️</button>
+        <button class="btn-borrar" onclick="event.stopPropagation(); borrarProducto(${p.id}, '${p.nombre.replace(/'/g, "\\'")}')">🗑️</button>
       </div>`;
   }).join('');
 }
@@ -709,14 +796,14 @@ function pintarCompras(compras) {
   }
 
   cont.innerHTML = compras.map(c => `
-    <div class="movimiento">
+    <div class="movimiento" onclick="verDetalleCompra(${c.id})" style="cursor:pointer;">
       <div class="swatch" style="background:#e7e1f2;">📥</div>
       <div class="mov-info">
         <div class="mov-titulo">${c.producto_nombre} ×${c.cantidad}</div>
         <div class="mov-sub">${c.proveedor || 'Sin proveedor'} · ${c.moneda} · ${fechaCorta(c.fecha)}</div>
       </div>
       <div class="mov-derecha"><div class="mov-monto">${dinero(c.total_ars)}</div></div>
-      <button class="btn-borrar" onclick="borrarCompra(${c.id})">🗑️</button>
+      <button class="btn-borrar" onclick="event.stopPropagation(); borrarCompra(${c.id})">🗑️</button>
     </div>`).join('');
 }
 
@@ -872,10 +959,10 @@ function pintarVentas(ventas) {
   cont.innerHTML = ventas.map(v => {
     const estado = v.saldo == 0 ? 'pill-pagado' : (v.pagado == 0 ? 'pill-pendiente' : 'pill-parcial');
     const texto = v.saldo == 0 ? 'Pagado' : (v.pagado == 0 ? 'Pendiente' : 'Parcial');
-    const botonPago = v.saldo > 0 ? `<button class="btn-borrar" title="Registrar pago" onclick="abrirPago(${v.id}, ${v.saldo})">💰</button>` : '';
+    const botonPago = v.saldo > 0 ? `<button class="btn-borrar" title="Registrar pago" onclick="event.stopPropagation(); abrirPago(${v.id}, ${v.saldo})">💰</button>` : '';
 
     return `
-      <div class="movimiento">
+      <div class="movimiento" onclick="verDetalleVenta(${v.id})" style="cursor:pointer;">
         <div class="swatch" style="background:var(--sage-bg);">🛒</div>
         <div class="mov-info">
           <div class="mov-titulo">${v.producto_nombre} ×${v.cantidad}</div>
@@ -886,7 +973,7 @@ function pintarVentas(ventas) {
           <span class="estado-pill ${estado}">${texto}</span>
         </div>
         ${botonPago}
-        <button class="btn-borrar" onclick="borrarVenta(${v.id})">🗑️</button>
+        <button class="btn-borrar" onclick="event.stopPropagation(); borrarVenta(${v.id})">🗑️</button>
       </div>`;
   }).join('');
 }
