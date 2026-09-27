@@ -495,6 +495,71 @@ def registrar_pago(venta_id, monto):
         conexion.close()
 
 
+def editar_venta(venta_id, cantidad, precio_unitario, medio_pago, cliente, pagado):
+    conexion = conectar()
+    cursor = conexion.cursor()
+
+    try:
+        cursor.execute("SELECT producto_id, cantidad, costo_unitario FROM ventas WHERE id = %s", (venta_id,))
+        venta = cursor.fetchone()
+
+        if venta is None:
+            return False, "La venta no existe."
+
+        producto_id, cantidad_anterior, costo_unitario = venta
+
+        if cantidad <= 0:
+            return False, "La cantidad debe ser mayor a cero."
+
+        cursor.execute("SELECT stock FROM productos WHERE id = %s", (producto_id,))
+        resultado = cursor.fetchone()
+
+        if resultado is None:
+            return False, "El producto de esta venta ya no existe."
+
+        # Si "devolviéramos" la cantidad anterior de esta venta, este es el
+        # stock disponible real para validar la nueva cantidad.
+        stock_disponible = resultado[0] + cantidad_anterior
+
+        if cantidad > stock_disponible:
+            return False, f"No hay suficiente stock. Stock disponible: {stock_disponible}"
+
+        total = precio_unitario * cantidad
+
+        if pagado < 0:
+            return False, "El monto pagado no puede ser negativo."
+
+        if pagado > total:
+            return False, "El monto pagado no puede ser mayor que el total de la venta."
+
+        ganancia = (precio_unitario - costo_unitario) * cantidad
+        saldo = total - pagado
+
+        if abs(saldo) < 0.01:
+            saldo = 0
+
+        cursor.execute("""
+            UPDATE ventas
+            SET cantidad = %s, precio_unitario = %s, total = %s, ganancia = %s,
+                medio_pago = %s, cliente = %s, pagado = %s, saldo = %s
+            WHERE id = %s
+        """, (cantidad, precio_unitario, total, ganancia, medio_pago, cliente or "", pagado, saldo, venta_id))
+
+        cursor.execute("UPDATE productos SET stock = %s WHERE id = %s",
+                        (stock_disponible - cantidad, producto_id))
+
+        conexion.commit()
+        return True, "Venta actualizada correctamente."
+
+    except Exception as error:
+        conexion.rollback()
+        return False, f"Error al editar la venta: {error}"
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+
 def eliminar_venta(venta_id):
     conexion = conectar()
     cursor = conexion.cursor()
