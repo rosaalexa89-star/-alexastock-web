@@ -103,6 +103,28 @@ def crear_tablas():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS gastos (
+                id SERIAL PRIMARY KEY,
+                motivo TEXT DEFAULT '',
+                monto REAL NOT NULL,
+                fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS config (
+                clave TEXT PRIMARY KEY,
+                valor REAL NOT NULL DEFAULT 0
+            )
+        """)
+
+        cursor.execute("""
+            INSERT INTO config (clave, valor)
+            VALUES ('inversion_inicial', 0)
+            ON CONFLICT (clave) DO NOTHING
+        """)
+
         metodos_iniciales = ["Transferencia", "Efectivo", "Mercado Pago"]
 
         for metodo in metodos_iniciales:
@@ -680,6 +702,116 @@ def obtener_reporte():
             "total_compras": float(total_compras),
             "productos_stock_bajo": productos_stock_bajo
         }
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+
+# ==========================================
+# GASTOS EXTRA
+# ==========================================
+
+def obtener_gastos():
+    conexion = conectar()
+    cursor = _dict_cursor(conexion)
+
+    try:
+        cursor.execute("""
+            SELECT id, motivo, monto, fecha
+            FROM gastos
+            ORDER BY fecha DESC, id DESC
+        """)
+        return [dict(fila) for fila in cursor.fetchall()]
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+
+def agregar_gasto(motivo, monto):
+    conexion = conectar()
+    cursor = conexion.cursor()
+
+    try:
+        if monto is None or monto <= 0:
+            return False, "El monto debe ser mayor a cero.", None
+
+        cursor.execute("""
+            INSERT INTO gastos (motivo, monto)
+            VALUES (%s, %s)
+            RETURNING id
+        """, (motivo or "", monto))
+
+        nuevo_id = cursor.fetchone()[0]
+        conexion.commit()
+        return True, "Gasto agregado correctamente.", nuevo_id
+
+    except Exception as error:
+        conexion.rollback()
+        return False, f"Error al agregar el gasto: {error}", None
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+
+def eliminar_gasto(gasto_id):
+    conexion = conectar()
+    cursor = conexion.cursor()
+
+    try:
+        cursor.execute("DELETE FROM gastos WHERE id = %s", (gasto_id,))
+        conexion.commit()
+        return True, "Gasto eliminado correctamente."
+
+    except Exception as error:
+        conexion.rollback()
+        return False, f"Error al eliminar el gasto: {error}"
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+
+# ==========================================
+# CONFIG (inversión inicial, etc.)
+# ==========================================
+
+def obtener_config():
+    conexion = conectar()
+    cursor = conexion.cursor()
+
+    try:
+        cursor.execute("SELECT clave, valor FROM config")
+        filas = cursor.fetchall()
+        return {clave: float(valor) for clave, valor in filas}
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+
+def guardar_inversion_inicial(monto):
+    conexion = conectar()
+    cursor = conexion.cursor()
+
+    try:
+        if monto is None or monto < 0:
+            return False, "El monto no puede ser negativo."
+
+        cursor.execute("""
+            INSERT INTO config (clave, valor)
+            VALUES ('inversion_inicial', %s)
+            ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor
+        """, (monto,))
+
+        conexion.commit()
+        return True, "Inversión inicial actualizada."
+
+    except Exception as error:
+        conexion.rollback()
+        return False, f"Error al guardar la inversión inicial: {error}"
 
     finally:
         cursor.close()
