@@ -1615,21 +1615,54 @@ async function abrirNuevoPedido() {
   select.innerHTML = '<option>Cargando…</option>';
 
   productosParaSelect = await api('/api/productos');
-  select.innerHTML = productosParaSelect.map(p => `<option value="${p.id}" data-precio="${p.precio_venta}">${p.nombre}</option>`).join('');
+  pintarSelectProductosPedido();
 
   document.getElementById('pedidoCantidad').value = 1;
   document.getElementById('pedidoCliente').value = '';
   document.getElementById('pedidoNotas').value = '';
   document.getElementById('pedidoError').style.display = 'none';
 
-  const actualizarPrecioPedido = () => {
-    const opcion = select.options[select.selectedIndex];
-    document.getElementById('pedidoPrecio').value = opcion ? (opcion.dataset.precio || 0) : 0;
+  select.onchange = (e) => {
+    if (e.target.value === '__nuevo__') {
+      manejarNuevoProductoDesdePedido();
+    } else {
+      actualizarPrecioPedido();
+    }
   };
-  select.onchange = actualizarPrecioPedido;
   actualizarPrecioPedido();
 
   abrirHoja('hojaPedido', 'fondoHojaPedido');
+
+  // Si todavía no hay ningún producto cargado, forzamos el alta igual
+  // que en Compras (ver comentario en abrirNuevaCompra).
+  if (productosParaSelect.length === 0) {
+    await manejarNuevoProductoDesdePedido();
+  }
+}
+
+function pintarSelectProductosPedido() {
+  const select = document.getElementById('pedidoProducto');
+  select.innerHTML = productosParaSelect.map(p => `<option value="${p.id}" data-precio="${p.precio_venta}">${p.nombre}</option>`).join('')
+    + '<option value="__nuevo__">➕ Agregar producto nuevo</option>';
+}
+
+function actualizarPrecioPedido() {
+  const select = document.getElementById('pedidoProducto');
+  const opcion = select.options[select.selectedIndex];
+  document.getElementById('pedidoPrecio').value = (opcion && opcion.dataset.precio) ? opcion.dataset.precio : 0;
+}
+
+async function manejarNuevoProductoDesdePedido() {
+  cerrarHoja('hojaPedido', 'fondoHojaPedido');
+  await abrirNuevoProducto(false);
+
+  // Al guardar el producto nuevo, reabrimos el pedido automáticamente:
+  const boton = document.getElementById('btnGuardarProducto');
+  const volver = () => {
+    boton.removeEventListener('click', volver);
+    setTimeout(abrirNuevoPedido, 200);
+  };
+  boton.addEventListener('click', volver);
 }
 
 document.getElementById('btnGuardarPedido').addEventListener('click', async () => {
