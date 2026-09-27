@@ -413,6 +413,24 @@
     <p class="error-form" id="pagoError"></p>
     <button class="btn-guardar" id="btnGuardarPago">Registrar pago</button>
   </div>
+  <!-- ===================== HOJA: PRODUCTO RÁPIDO (desde Pedidos) ===================== -->
+  <div class="fondo-hoja" id="fondoHojaProductoRapido"></div>
+  <div class="hoja" id="hojaProductoRapido">
+    <div class="hoja-agarre"></div>
+    <h3>Nuevo producto</h3>
+    <p style="font-size:13px;color:var(--ink-soft);margin-top:-8px;">Cuando sepas el costo, precio y stock, completalos desde Inventario o al registrar la compra.</p>
+    <div class="campo">
+      <label>Nombre</label>
+      <input type="text" id="prodRapidoNombre" placeholder="Ej: Toallón beige">
+    </div>
+    <div class="campo">
+      <label>Categoría</label>
+      <select id="prodRapidoCategoria"></select>
+    </div>
+    <p class="error-form" id="prodRapidoError"></p>
+    <button class="btn-guardar" id="btnGuardarProductoRapido">Guardar producto</button>
+  </div>
+
   <!-- ===================== HOJA: NUEVO PEDIDO ===================== -->
   <div class="fondo-hoja" id="fondoHojaPedido"></div>
   <div class="hoja" id="hojaPedido">
@@ -579,7 +597,7 @@ function cerrarHoja(idHoja, idFondo) {
   document.getElementById(idFondo).classList.remove('abierto');
 }
 
-['Producto', 'Compra', 'Venta', 'Pago', 'Gasto', 'Inversion', 'Info', 'Pedido', 'Entregar', 'Detalle'].forEach(nombre => {
+['Producto', 'ProductoRapido', 'Compra', 'Venta', 'Pago', 'Gasto', 'Inversion', 'Info', 'Pedido', 'Entregar', 'Detalle'].forEach(nombre => {
   document.getElementById('fondoHoja' + nombre).addEventListener('click', () => {
     cerrarHoja('hoja' + nombre, 'fondoHoja' + nombre);
   });
@@ -1636,16 +1654,78 @@ async function abrirNuevoPedido() {
 
 async function manejarNuevoProductoDesdePedido() {
   cerrarHoja('hojaPedido', 'fondoHojaPedido');
-  await abrirNuevoProducto(false);
-
-  // Al guardar el producto nuevo, reabrimos el pedido automáticamente:
-  const boton = document.getElementById('btnGuardarProducto');
-  const volver = () => {
-    boton.removeEventListener('click', volver);
-    setTimeout(abrirNuevoPedido, 200);
-  };
-  boton.addEventListener('click', volver);
+  await abrirProductoRapido();
 }
+
+async function abrirProductoRapido() {
+  const select = document.getElementById('prodRapidoCategoria');
+  select.innerHTML = '<option>Cargando…</option>';
+
+  const categorias = await api('/api/categorias');
+  pintarSelectCategoriasRapido(categorias);
+
+  document.getElementById('prodRapidoNombre').value = '';
+  document.getElementById('prodRapidoError').style.display = 'none';
+
+  abrirHoja('hojaProductoRapido', 'fondoHojaProductoRapido');
+
+  if (categorias.length === 0) {
+    await manejarNuevaCategoriaRapida();
+  }
+}
+
+function pintarSelectCategoriasRapido(categorias) {
+  const select = document.getElementById('prodRapidoCategoria');
+  select.innerHTML = categorias.map(c => `<option value="${c}">${c}</option>`).join('')
+    + '<option value="__nueva__">➕ Nueva categoría…</option>';
+}
+
+async function manejarNuevaCategoriaRapida() {
+  const select = document.getElementById('prodRapidoCategoria');
+  const nombre = prompt('Nombre de la nueva categoría:');
+
+  if (nombre && nombre.trim()) {
+    await api('/api/categorias', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({nombre})});
+    const categorias = await api('/api/categorias');
+    pintarSelectCategoriasRapido(categorias);
+    select.value = nombre.trim();
+  } else if (select.options.length > 1) {
+    select.selectedIndex = 0;
+  }
+}
+
+document.getElementById('prodRapidoCategoria').addEventListener('change', (e) => {
+  if (e.target.value === '__nueva__') {
+    manejarNuevaCategoriaRapida();
+  }
+});
+
+document.getElementById('btnGuardarProductoRapido').addEventListener('click', async () => {
+  const errorEl = document.getElementById('prodRapidoError');
+  errorEl.style.display = 'none';
+
+  try {
+    await api('/api/productos', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        nombre: document.getElementById('prodRapidoNombre').value,
+        categoria: document.getElementById('prodRapidoCategoria').value,
+        costo: 0,
+        precio_venta: 0,
+        stock: 0,
+        stock_minimo: 0
+      })
+    });
+
+    cerrarHoja('hojaProductoRapido', 'fondoHojaProductoRapido');
+    abrirNuevoPedido();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
 
 document.getElementById('btnGuardarPedido').addEventListener('click', async () => {
   const errorEl = document.getElementById('pedidoError');
