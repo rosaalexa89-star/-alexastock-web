@@ -360,7 +360,6 @@ def api_agregar_pedido():
     exito, mensaje, nuevo_id = database.agregar_pedido(
         producto_id=datos.get("producto_id"),
         cantidad=int(datos.get("cantidad", 0) or 0),
-        precio_unitario=float(datos.get("precio_unitario", 0) or 0),
         cliente=datos.get("cliente", ""),
         notas=datos.get("notas", ""),
     )
@@ -387,6 +386,7 @@ def api_entregar_pedido(pedido_id):
 
     exito, mensaje = database.entregar_pedido(
         pedido_id=pedido_id,
+        precio_unitario=float(datos.get("precio_unitario", 0) or 0),
         medio_pago=datos.get("medio_pago", ""),
         pagado=float(datos.get("pagado", 0) or 0),
     )
