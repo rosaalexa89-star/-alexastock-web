@@ -276,6 +276,12 @@
       <div id="listaGastos"><div class="cargando">Cargando…</div></div>
     </section>
 
+    <!-- ===================== PEDIDOS ===================== -->
+    <section class="vista" id="vista-pedidos">
+      <div class="seccion-titulo" style="margin-top:0;">Pedidos por entregar</div>
+      <div id="listaPedidos"><div class="cargando">Cargando…</div></div>
+    </section>
+
   </main>
 
   <button class="fab" id="btnFab">+</button>
@@ -286,6 +292,7 @@
     <button class="tab" data-vista="compras"><span class="tab-icono">📥</span> Compras</button>
     <button class="tab" data-vista="ventas"><span class="tab-icono">🛒</span> Ventas</button>
     <button class="tab" data-vista="gastos"><span class="tab-icono">💸</span> Gastos</button>
+    <button class="tab" data-vista="pedidos"><span class="tab-icono">📝</span> Pedidos</button>
   </nav>
 
   <!-- ===================== HOJA: PRODUCTO ===================== -->
@@ -405,6 +412,53 @@
     <p class="error-form" id="pagoError"></p>
     <button class="btn-guardar" id="btnGuardarPago">Registrar pago</button>
   </div>
+  <!-- ===================== HOJA: NUEVO PEDIDO ===================== -->
+  <div class="fondo-hoja" id="fondoHojaPedido"></div>
+  <div class="hoja" id="hojaPedido">
+    <div class="hoja-agarre"></div>
+    <h3>Nuevo pedido</h3>
+    <div class="campo">
+      <label>Producto</label>
+      <select id="pedidoProducto"></select>
+    </div>
+    <div class="campo">
+      <label>Cantidad</label>
+      <input type="number" id="pedidoCantidad" value="1" min="1">
+    </div>
+    <div class="campo">
+      <label>Precio unitario ($)</label>
+      <input type="number" id="pedidoPrecio" value="0" min="0" step="0.01">
+    </div>
+    <div class="campo">
+      <label>Cliente</label>
+      <input type="text" id="pedidoCliente" placeholder="Nombre del cliente">
+    </div>
+    <div class="campo">
+      <label>Notas (opcional)</label>
+      <input type="text" id="pedidoNotas" placeholder="Ej: quiere color celeste, entregar el viernes…">
+    </div>
+    <p class="error-form" id="pedidoError"></p>
+    <button class="btn-guardar" id="btnGuardarPedido">Guardar pedido</button>
+  </div>
+
+  <!-- ===================== HOJA: ENTREGAR PEDIDO ===================== -->
+  <div class="fondo-hoja" id="fondoHojaEntregar"></div>
+  <div class="hoja" id="hojaEntregar">
+    <div class="hoja-agarre"></div>
+    <h3>Entregar pedido</h3>
+    <p id="entregarInfo" style="font-size:13px;color:var(--ink-soft);margin-top:-8px;"></p>
+    <div class="campo">
+      <label>Medio de pago</label>
+      <select id="entregarMedioPago"></select>
+    </div>
+    <div class="campo">
+      <label>Pagado ($)</label>
+      <input type="number" id="entregarPagado" value="0" min="0" step="0.01">
+    </div>
+    <p class="error-form" id="entregarError"></p>
+    <button class="btn-guardar" id="btnConfirmarEntrega">Confirmar entrega</button>
+  </div>
+
   <!-- ===================== HOJA: GASTO EXTRA ===================== -->
   <div class="fondo-hoja" id="fondoHojaGasto"></div>
   <div class="hoja" id="hojaGasto">
@@ -510,6 +564,7 @@ tabs.forEach(tab => {
     if (tab.dataset.vista === 'compras') cargarCompras();
     if (tab.dataset.vista === 'ventas') cargarVentas();
     if (tab.dataset.vista === 'gastos') cargarGastos();
+    if (tab.dataset.vista === 'pedidos') cargarPedidos();
   });
 });
 
@@ -527,7 +582,7 @@ function cerrarHoja(idHoja, idFondo) {
   document.getElementById(idFondo).classList.remove('abierto');
 }
 
-['Producto', 'Compra', 'Venta', 'Pago', 'Gasto', 'Inversion', 'Info', 'Detalle'].forEach(nombre => {
+['Producto', 'Compra', 'Venta', 'Pago', 'Gasto', 'Inversion', 'Info', 'Pedido', 'Entregar', 'Detalle'].forEach(nombre => {
   document.getElementById('fondoHoja' + nombre).addEventListener('click', () => {
     cerrarHoja('hoja' + nombre, 'fondoHoja' + nombre);
   });
@@ -541,6 +596,7 @@ document.getElementById('btnFab').addEventListener('click', () => {
   else if (vistaActiva === 'vista-compras') abrirNuevaCompra();
   else if (vistaActiva === 'vista-ventas') abrirNuevaVenta();
   else if (vistaActiva === 'vista-gastos') abrirNuevoGasto();
+  else if (vistaActiva === 'vista-pedidos') abrirNuevoPedido();
   else abrirNuevaVenta(); // desde Inicio, la acción más común es cargar una venta
 });
 
@@ -1500,6 +1556,148 @@ document.getElementById('btnGuardarInversion').addEventListener('click', async (
 
     cerrarHoja('hojaInversion', 'fondoHojaInversion');
     cargarInicio();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+// ============================================================
+// PEDIDOS
+// ============================================================
+
+let cachePedidos = [];
+
+async function cargarPedidos() {
+  try {
+    cachePedidos = await api('/api/pedidos');
+    pintarPedidos(cachePedidos);
+  } catch (error) {
+    document.getElementById('listaPedidos').innerHTML = `<div class="vacio">${error.message}</div>`;
+  }
+}
+
+function pintarPedidos(pedidos) {
+  const cont = document.getElementById('listaPedidos');
+
+  if (!pedidos.length) {
+    cont.innerHTML = '<div class="vacio">No tenés pedidos pendientes. Tocá + para cargar uno.</div>';
+    return;
+  }
+
+  cont.innerHTML = pedidos.map(p => `
+    <div class="movimiento">
+      <div class="swatch">📝</div>
+      <div class="mov-info">
+        <div class="mov-titulo">${p.producto_nombre} ×${p.cantidad}</div>
+        <div class="mov-sub">${p.cliente || 'Sin cliente'}${p.notas ? ' · ' + p.notas : ''} · ${fechaCorta(p.fecha)}</div>
+      </div>
+      <div class="mov-derecha"><div class="mov-monto">${dinero(p.precio_unitario * p.cantidad)}</div></div>
+      <button class="btn-borrar" title="Entregar" onclick="event.stopPropagation(); abrirEntregarPedido(${p.id})">✅</button>
+      <button class="btn-borrar" onclick="event.stopPropagation(); cancelarPedido(${p.id})">🗑️</button>
+    </div>`).join('');
+}
+
+async function cancelarPedido(id) {
+  if (!confirm('¿Querés cancelar este pedido?')) return;
+  try {
+    await api(`/api/pedidos/${id}`, {method: 'DELETE'});
+    cargarPedidos();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function abrirNuevoPedido() {
+  const select = document.getElementById('pedidoProducto');
+  select.innerHTML = '<option>Cargando…</option>';
+
+  productosParaSelect = await api('/api/productos');
+  select.innerHTML = productosParaSelect.map(p => `<option value="${p.id}" data-precio="${p.precio_venta}">${p.nombre}</option>`).join('');
+
+  document.getElementById('pedidoCantidad').value = 1;
+  document.getElementById('pedidoCliente').value = '';
+  document.getElementById('pedidoNotas').value = '';
+  document.getElementById('pedidoError').style.display = 'none';
+
+  const actualizarPrecioPedido = () => {
+    const opcion = select.options[select.selectedIndex];
+    document.getElementById('pedidoPrecio').value = opcion ? (opcion.dataset.precio || 0) : 0;
+  };
+  select.onchange = actualizarPrecioPedido;
+  actualizarPrecioPedido();
+
+  abrirHoja('hojaPedido', 'fondoHojaPedido');
+}
+
+document.getElementById('btnGuardarPedido').addEventListener('click', async () => {
+  const errorEl = document.getElementById('pedidoError');
+  errorEl.style.display = 'none';
+
+  try {
+    await api('/api/pedidos', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        producto_id: document.getElementById('pedidoProducto').value,
+        cantidad: document.getElementById('pedidoCantidad').value,
+        precio_unitario: document.getElementById('pedidoPrecio').value,
+        cliente: document.getElementById('pedidoCliente').value,
+        notas: document.getElementById('pedidoNotas').value
+      })
+    });
+
+    cerrarHoja('hojaPedido', 'fondoHojaPedido');
+    cargarPedidos();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+// ---- Entregar pedido (lo convierte en venta) ----
+
+let pedidoIdParaEntregar = null;
+
+async function abrirEntregarPedido(pedidoId) {
+  const pedido = cachePedidos.find(p => p.id === pedidoId);
+  if (!pedido) return;
+
+  pedidoIdParaEntregar = pedidoId;
+
+  const selectMedio = document.getElementById('entregarMedioPago');
+  selectMedio.innerHTML = '<option>Cargando…</option>';
+  const metodos = await api('/api/metodos_pago');
+  selectMedio.innerHTML = metodos.map(m => `<option value="${m}">${m}</option>`).join('');
+
+  const total = pedido.precio_unitario * pedido.cantidad;
+  document.getElementById('entregarInfo').textContent =
+    `${pedido.producto_nombre} ×${pedido.cantidad} · ${pedido.cliente || 'Sin cliente'} · Total: ${dinero(total)}`;
+  document.getElementById('entregarPagado').value = total;
+  document.getElementById('entregarPagado').max = total;
+  document.getElementById('entregarError').style.display = 'none';
+
+  abrirHoja('hojaEntregar', 'fondoHojaEntregar');
+}
+
+document.getElementById('btnConfirmarEntrega').addEventListener('click', async () => {
+  const errorEl = document.getElementById('entregarError');
+  errorEl.style.display = 'none';
+
+  try {
+    await api(`/api/pedidos/${pedidoIdParaEntregar}/entregar`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        medio_pago: document.getElementById('entregarMedioPago').value,
+        pagado: document.getElementById('entregarPagado').value
+      })
+    });
+
+    cerrarHoja('hojaEntregar', 'fondoHojaEntregar');
+    cargarPedidos();
 
   } catch (error) {
     errorEl.textContent = error.message;
