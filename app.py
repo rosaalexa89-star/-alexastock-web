@@ -1,8 +1,11 @@
 import os
-from datetime import timedelta
+from datetime import timedelta, datetime
 from functools import wraps
+from io import BytesIO
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
+from openpyxl import Workbook
+from openpyxl.styles import Font
 
 import database
 
@@ -392,6 +395,82 @@ def api_entregar_pedido(pedido_id):
         return jsonify({"ok": True, "mensaje": mensaje})
 
     return jsonify({"ok": False, "mensaje": mensaje}), 400
+
+
+@app.route("/api/exportar", methods=["GET"])
+def api_exportar_excel():
+    wb = Workbook()
+
+    def fecha_txt(fecha):
+        return fecha.strftime("%d/%m/%Y %H:%M") if fecha else ""
+
+    # --- Ventas ---
+    hoja_ventas = wb.active
+    hoja_ventas.title = "Ventas"
+    hoja_ventas.append([
+        "Fecha", "Producto", "Cantidad", "Precio unitario", "Total",
+        "Ganancia", "Medio de pago", "Cliente", "Pagado", "Saldo"
+    ])
+    for v in database.obtener_ventas():
+        hoja_ventas.append([
+            fecha_txt(v["fecha"]), v["producto_nombre"], v["cantidad"],
+            v["precio_unitario"], v["total"], v["ganancia"], v["medio_pago"],
+            v["cliente"], v["pagado"], v["saldo"]
+        ])
+
+    # --- Compras ---
+    hoja_compras = wb.create_sheet("Compras")
+    hoja_compras.append([
+        "Fecha", "Producto", "Cantidad", "Moneda", "Costo unitario ($)",
+        "Total ($)", "Proveedor"
+    ])
+    for c in database.obtener_compras():
+        hoja_compras.append([
+            fecha_txt(c["fecha"]), c["producto_nombre"], c["cantidad"], c["moneda"],
+            c["costo_unitario_ars"], c["total_ars"], c["proveedor"]
+        ])
+
+    # --- Gastos extra ---
+    hoja_gastos = wb.create_sheet("Gastos extra")
+    hoja_gastos.append(["Fecha", "Motivo", "Monto"])
+    for g in database.obtener_gastos():
+        hoja_gastos.append([fecha_txt(g["fecha"]), g["motivo"], g["monto"]])
+
+    # --- Pedidos pendientes ---
+    hoja_pedidos = wb.create_sheet("Pedidos pendientes")
+    hoja_pedidos.append(["Fecha", "Producto", "Cantidad", "Precio unitario", "Cliente", "Notas"])
+    for p in database.obtener_pedidos():
+        hoja_pedidos.append([
+            fecha_txt(p["fecha"]), p["producto_nombre"], p["cantidad"],
+            p["precio_unitario"], p["cliente"], p["notas"]
+        ])
+
+    # --- Inventario actual ---
+    hoja_productos = wb.create_sheet("Inventario")
+    hoja_productos.append(["Nombre", "Categoría", "Costo", "Precio de venta", "Stock", "Stock mínimo"])
+    for p in database.obtener_productos():
+        hoja_productos.append([
+            p["nombre"], p["categoria"], p["costo"], p["precio_venta"], p["stock"], p["stock_minimo"]
+        ])
+
+    # Encabezados en negrita y primera fila congelada en cada hoja
+    for hoja in wb.worksheets:
+        for celda in hoja[1]:
+            celda.font = Font(bold=True)
+        hoja.freeze_panes = "A2"
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    nombre_archivo = f"entre_casa_respaldo_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=nombre_archivo,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 
 if __name__ == "__main__":
