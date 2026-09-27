@@ -265,5 +265,62 @@ def api_obtener_reporte():
     return jsonify(database.obtener_reporte())
 
 
+# ============================================================
+# GASTOS EXTRA
+# ============================================================
+
+@app.route("/api/gastos", methods=["GET"])
+def api_obtener_gastos():
+    return jsonify(database.obtener_gastos())
+
+
+@app.route("/api/gastos", methods=["POST"])
+def api_agregar_gasto():
+    datos = request.get_json(force=True)
+
+    exito, mensaje, nuevo_id = database.agregar_gasto(
+        motivo=datos.get("motivo", ""),
+        monto=float(datos.get("monto", 0) or 0),
+    )
+
+    if exito:
+        return jsonify({"ok": True, "mensaje": mensaje, "id": nuevo_id})
+
+    return jsonify({"ok": False, "mensaje": mensaje}), 400
+
+
+@app.route("/api/gastos/<int:gasto_id>", methods=["DELETE"])
+def api_eliminar_gasto(gasto_id):
+    exito, mensaje = database.eliminar_gasto(gasto_id)
+
+    if exito:
+        return jsonify({"ok": True, "mensaje": mensaje})
+
+    return jsonify({"ok": False, "mensaje": mensaje}), 400
+
+
+# ============================================================
+# CONFIG (inversión inicial)
+# ============================================================
+
+@app.route("/api/config", methods=["GET"])
+def api_obtener_config():
+    return jsonify(database.obtener_config())
+
+
+@app.route("/api/config", methods=["POST"])
+def api_guardar_config():
+    datos = request.get_json(force=True)
+
+    exito, mensaje = database.guardar_inversion_inicial(
+        float(datos.get("inversion_inicial", 0) or 0)
+    )
+
+    if exito:
+        return jsonify({"ok": True, "mensaje": mensaje})
+
+    return jsonify({"ok": False, "mensaje": mensaje}), 400
+
+
 if __name__ == "__main__":
     app.run(debug=True)
