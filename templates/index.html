@@ -427,16 +427,8 @@
       <input type="number" id="pedidoCantidad" value="1" min="1">
     </div>
     <div class="campo">
-      <label>Precio unitario ($)</label>
-      <input type="number" id="pedidoPrecio" value="0" min="0" step="0.01">
-    </div>
-    <div class="campo">
       <label>Cliente</label>
       <input type="text" id="pedidoCliente" placeholder="Nombre del cliente">
-    </div>
-    <div class="campo">
-      <label>Notas (opcional)</label>
-      <input type="text" id="pedidoNotas" placeholder="Ej: quiere color celeste, entregar el viernes…">
     </div>
     <p class="error-form" id="pedidoError"></p>
     <button class="btn-guardar" id="btnGuardarPedido">Guardar pedido</button>
@@ -448,6 +440,10 @@
     <div class="hoja-agarre"></div>
     <h3>Entregar pedido</h3>
     <p id="entregarInfo" style="font-size:13px;color:var(--ink-soft);margin-top:-8px;"></p>
+    <div class="campo">
+      <label>Precio unitario ($)</label>
+      <input type="number" id="entregarPrecio" value="0" min="0" step="0.01">
+    </div>
     <div class="campo">
       <label>Medio de pago</label>
       <select id="entregarMedioPago"></select>
@@ -901,7 +897,8 @@ let cacheProductos = [];
 
 async function cargarInventario() {
   try {
-    cacheProductos = await api('/api/productos');
+    const productos = await api('/api/productos');
+    cacheProductos = productos.filter(p => p.stock > 0);
     document.getElementById('tituloInventario').textContent = `Productos (${cacheProductos.length})`;
     pintarInventario(cacheProductos);
   } catch (error) {
@@ -913,7 +910,7 @@ function pintarInventario(productos) {
   const cont = document.getElementById('listaInventario');
 
   if (!productos.length) {
-    cont.innerHTML = '<div class="vacio">Todavía no cargaste ningún producto. Tocá el botón + para agregar el primero.</div>';
+    cont.innerHTML = '<div class="vacio">No tenés productos con stock disponible. Los que llegan a 0 se ocultan acá (podés reponerlos desde Compras).</div>';
     return;
   }
 
@@ -1592,9 +1589,9 @@ function pintarPedidos(pedidos) {
       <div class="swatch">📝</div>
       <div class="mov-info">
         <div class="mov-titulo">${p.producto_nombre} ×${p.cantidad}</div>
-        <div class="mov-sub">${p.cliente || 'Sin cliente'}${p.notas ? ' · ' + p.notas : ''} · ${fechaCorta(p.fecha)}</div>
+        <div class="mov-sub">${p.cliente || 'Sin cliente'} · ${fechaCorta(p.fecha)}</div>
       </div>
-      <div class="mov-derecha"><div class="mov-monto">${dinero(p.precio_unitario * p.cantidad)}</div></div>
+      <div class="mov-derecha"><div class="mov-monto" style="font-size:12px;color:var(--ink-soft);">≈ ${dinero(p.precio_unitario * p.cantidad)}</div></div>
       <button class="btn-borrar" title="Entregar" onclick="event.stopPropagation(); abrirEntregarPedido(${p.id})">✅</button>
       <button class="btn-borrar" onclick="event.stopPropagation(); cancelarPedido(${p.id})">🗑️</button>
     </div>`).join('');
@@ -1615,54 +1612,13 @@ async function abrirNuevoPedido() {
   select.innerHTML = '<option>Cargando…</option>';
 
   productosParaSelect = await api('/api/productos');
-  pintarSelectProductosPedido();
+  select.innerHTML = productosParaSelect.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
 
   document.getElementById('pedidoCantidad').value = 1;
   document.getElementById('pedidoCliente').value = '';
-  document.getElementById('pedidoNotas').value = '';
   document.getElementById('pedidoError').style.display = 'none';
 
-  select.onchange = (e) => {
-    if (e.target.value === '__nuevo__') {
-      manejarNuevoProductoDesdePedido();
-    } else {
-      actualizarPrecioPedido();
-    }
-  };
-  actualizarPrecioPedido();
-
   abrirHoja('hojaPedido', 'fondoHojaPedido');
-
-  // Si todavía no hay ningún producto cargado, forzamos el alta igual
-  // que en Compras (ver comentario en abrirNuevaCompra).
-  if (productosParaSelect.length === 0) {
-    await manejarNuevoProductoDesdePedido();
-  }
-}
-
-function pintarSelectProductosPedido() {
-  const select = document.getElementById('pedidoProducto');
-  select.innerHTML = productosParaSelect.map(p => `<option value="${p.id}" data-precio="${p.precio_venta}">${p.nombre}</option>`).join('')
-    + '<option value="__nuevo__">➕ Agregar producto nuevo</option>';
-}
-
-function actualizarPrecioPedido() {
-  const select = document.getElementById('pedidoProducto');
-  const opcion = select.options[select.selectedIndex];
-  document.getElementById('pedidoPrecio').value = (opcion && opcion.dataset.precio) ? opcion.dataset.precio : 0;
-}
-
-async function manejarNuevoProductoDesdePedido() {
-  cerrarHoja('hojaPedido', 'fondoHojaPedido');
-  await abrirNuevoProducto(false);
-
-  // Al guardar el producto nuevo, reabrimos el pedido automáticamente:
-  const boton = document.getElementById('btnGuardarProducto');
-  const volver = () => {
-    boton.removeEventListener('click', volver);
-    setTimeout(abrirNuevoPedido, 200);
-  };
-  boton.addEventListener('click', volver);
 }
 
 document.getElementById('btnGuardarPedido').addEventListener('click', async () => {
@@ -1676,9 +1632,7 @@ document.getElementById('btnGuardarPedido').addEventListener('click', async () =
       body: JSON.stringify({
         producto_id: document.getElementById('pedidoProducto').value,
         cantidad: document.getElementById('pedidoCantidad').value,
-        precio_unitario: document.getElementById('pedidoPrecio').value,
-        cliente: document.getElementById('pedidoCliente').value,
-        notas: document.getElementById('pedidoNotas').value
+        cliente: document.getElementById('pedidoCliente').value
       })
     });
 
@@ -1701,19 +1655,34 @@ async function abrirEntregarPedido(pedidoId) {
 
   pedidoIdParaEntregar = pedidoId;
 
+  const [productos, metodos] = await Promise.all([
+    api('/api/productos'),
+    api('/api/metodos_pago')
+  ]);
+
+  const producto = productos.find(p => p.id === pedido.producto_id);
+
   const selectMedio = document.getElementById('entregarMedioPago');
-  selectMedio.innerHTML = '<option>Cargando…</option>';
-  const metodos = await api('/api/metodos_pago');
   selectMedio.innerHTML = metodos.map(m => `<option value="${m}">${m}</option>`).join('');
 
-  const total = pedido.precio_unitario * pedido.cantidad;
   document.getElementById('entregarInfo').textContent =
-    `${pedido.producto_nombre} ×${pedido.cantidad} · ${pedido.cliente || 'Sin cliente'} · Total: ${dinero(total)}`;
-  document.getElementById('entregarPagado').value = total;
-  document.getElementById('entregarPagado').max = total;
+    `${pedido.producto_nombre} ×${pedido.cantidad} · ${pedido.cliente || 'Sin cliente'}`;
+  document.getElementById('entregarPrecio').value = producto ? producto.precio_venta : 0;
   document.getElementById('entregarError').style.display = 'none';
 
+  actualizarPagadoEntrega();
+  document.getElementById('entregarPrecio').oninput = actualizarPagadoEntrega;
+
   abrirHoja('hojaEntregar', 'fondoHojaEntregar');
+}
+
+function actualizarPagadoEntrega() {
+  const pedido = cachePedidos.find(p => p.id === pedidoIdParaEntregar);
+  if (!pedido) return;
+  const precio = Number(document.getElementById('entregarPrecio').value) || 0;
+  const total = precio * pedido.cantidad;
+  document.getElementById('entregarPagado').value = total;
+  document.getElementById('entregarPagado').max = total;
 }
 
 document.getElementById('btnConfirmarEntrega').addEventListener('click', async () => {
@@ -1725,6 +1694,7 @@ document.getElementById('btnConfirmarEntrega').addEventListener('click', async (
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
+        precio_unitario: document.getElementById('entregarPrecio').value,
         medio_pago: document.getElementById('entregarMedioPago').value,
         pagado: document.getElementById('entregarPagado').value
       })
