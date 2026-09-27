@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Alexa Stock</title>
+<title>Entre Casa</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
@@ -51,7 +51,11 @@
     text-transform: uppercase;
     color: var(--berry);
     margin: 0 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
+  .marca .logo-icono { font-size: 16px; letter-spacing: 0; }
 
   .saludo { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 600; margin: 0; }
   .fecha { font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
@@ -213,7 +217,7 @@
   <header class="topbar">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
       <div>
-        <p class="marca">Alexa Stock</p>
+        <p class="marca"><span class="logo-icono">🧺</span> Entre Casa</p>
         <h1 class="saludo">Hola 👋</h1>
         <p class="fecha" id="fechaHoy"></p>
       </div>
@@ -231,6 +235,11 @@
         <div class="cargando">Cargando resumen…</div>
       </div>
 
+      <div style="text-align:right;margin-top:8px;">
+        <a href="javascript:void(0)" id="linkConfigInversion" style="font-size:12px;color:var(--ink-soft);text-decoration:underline;">⚙️ Configurar inversión inicial</a>
+      </div>
+
+      <div id="avisoInversion"></div>
       <div id="avisoStockBajo"></div>
 
       <div class="seccion-titulo">Últimos movimientos</div>
@@ -259,6 +268,14 @@
       <div id="listaVentas"><div class="cargando">Cargando…</div></div>
     </section>
 
+    <!-- ===================== GASTOS EXTRA ===================== -->
+    <section class="vista" id="vista-gastos">
+      <div class="resumen-grid" id="resumenGastos"></div>
+      <div class="buscador" style="margin-top:14px;">🔎 <input id="buscarGastos" placeholder="Buscar por motivo…"></div>
+      <div class="seccion-titulo">Historial de gastos</div>
+      <div id="listaGastos"><div class="cargando">Cargando…</div></div>
+    </section>
+
   </main>
 
   <button class="fab" id="btnFab">+</button>
@@ -268,6 +285,7 @@
     <button class="tab" data-vista="inventario"><span class="tab-icono">📦</span> Inventario</button>
     <button class="tab" data-vista="compras"><span class="tab-icono">📥</span> Compras</button>
     <button class="tab" data-vista="ventas"><span class="tab-icono">🛒</span> Ventas</button>
+    <button class="tab" data-vista="gastos"><span class="tab-icono">💸</span> Gastos</button>
   </nav>
 
   <!-- ===================== HOJA: PRODUCTO ===================== -->
@@ -386,6 +404,37 @@
     <p class="error-form" id="pagoError"></p>
     <button class="btn-guardar" id="btnGuardarPago">Registrar pago</button>
   </div>
+  <!-- ===================== HOJA: GASTO EXTRA ===================== -->
+  <div class="fondo-hoja" id="fondoHojaGasto"></div>
+  <div class="hoja" id="hojaGasto">
+    <div class="hoja-agarre"></div>
+    <h3>Nuevo gasto</h3>
+    <div class="campo">
+      <label>Motivo</label>
+      <input type="text" id="gastoMotivo" placeholder="Ej: compra de insumos, uso personal…">
+    </div>
+    <div class="campo">
+      <label>Monto ($)</label>
+      <input type="number" id="gastoMonto" value="0" min="0" step="0.01">
+    </div>
+    <p class="error-form" id="gastoError"></p>
+    <button class="btn-guardar" id="btnGuardarGasto">Guardar gasto</button>
+  </div>
+
+  <!-- ===================== HOJA: INVERSIÓN INICIAL ===================== -->
+  <div class="fondo-hoja" id="fondoHojaInversion"></div>
+  <div class="hoja" id="hojaInversion">
+    <div class="hoja-agarre"></div>
+    <h3>Inversión inicial</h3>
+    <p style="font-size:13px;color:var(--ink-soft);margin-top:-8px;">Lo que pusiste para arrancar el emprendimiento. Cuando lo recaudado menos los gastos supere este monto, te avisamos.</p>
+    <div class="campo">
+      <label>Monto ($)</label>
+      <input type="number" id="inversionMonto" value="0" min="0" step="0.01">
+    </div>
+    <p class="error-form" id="inversionError"></p>
+    <button class="btn-guardar" id="btnGuardarInversion">Guardar</button>
+  </div>
+
   <!-- ===================== HOJA: DETALLE (producto/compra/venta) ===================== -->
   <div class="fondo-hoja" id="fondoHojaDetalle"></div>
   <div class="hoja" id="hojaDetalle">
@@ -450,6 +499,7 @@ tabs.forEach(tab => {
     if (tab.dataset.vista === 'inventario') cargarInventario();
     if (tab.dataset.vista === 'compras') cargarCompras();
     if (tab.dataset.vista === 'ventas') cargarVentas();
+    if (tab.dataset.vista === 'gastos') cargarGastos();
   });
 });
 
@@ -467,7 +517,7 @@ function cerrarHoja(idHoja, idFondo) {
   document.getElementById(idFondo).classList.remove('abierto');
 }
 
-['Producto', 'Compra', 'Venta', 'Pago', 'Detalle'].forEach(nombre => {
+['Producto', 'Compra', 'Venta', 'Pago', 'Gasto', 'Inversion', 'Detalle'].forEach(nombre => {
   document.getElementById('fondoHoja' + nombre).addEventListener('click', () => {
     cerrarHoja('hoja' + nombre, 'fondoHoja' + nombre);
   });
@@ -480,6 +530,7 @@ document.getElementById('btnFab').addEventListener('click', () => {
   if (vistaActiva === 'vista-inventario') abrirNuevoProducto();
   else if (vistaActiva === 'vista-compras') abrirNuevaCompra();
   else if (vistaActiva === 'vista-ventas') abrirNuevaVenta();
+  else if (vistaActiva === 'vista-gastos') abrirNuevoGasto();
   else abrirNuevaVenta(); // desde Inicio, la acción más común es cargar una venta
 });
 
@@ -604,21 +655,43 @@ function verDetalleVenta(id) {
 
 async function cargarInicio() {
   try {
-    const [reporte, ventas, compras, stockBajo] = await Promise.all([
+    const [reporte, ventas, compras, stockBajo, gastos, config] = await Promise.all([
       api('/api/reporte'),
       api('/api/ventas?limite=5'),
       api('/api/compras?limite=5'),
-      api('/api/productos')
+      api('/api/productos'),
+      api('/api/gastos'),
+      api('/api/config')
     ]);
 
     const bajos = stockBajo.filter(p => p.stock_minimo > 0 && p.stock <= p.stock_minimo);
+
+    const totalGastos = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
+    const recaudado = Number(reporte.total_ventas) - Number(reporte.total_pendiente);
+    const disponible = recaudado - totalGastos;
+    const inversionInicial = Number(config.inversion_inicial) || 0;
 
     document.getElementById('resumenGrid').innerHTML = `
       <div class="tarjeta-resumen"><div class="etiqueta">Total vendido</div><div class="valor">${dinero(reporte.total_ventas)}</div></div>
       <div class="tarjeta-resumen"><div class="etiqueta">Pendiente de cobro</div><div class="valor">${dinero(reporte.total_pendiente)}</div></div>
       <div class="tarjeta-resumen"><div class="etiqueta">Ganancia</div><div class="valor">${dinero(reporte.ganancia)}</div></div>
       <div class="tarjeta-resumen ${bajos.length ? 'alerta' : ''}"><div class="etiqueta">Stock bajo</div><div class="valor">${bajos.length} prod.</div></div>
+      <div class="tarjeta-resumen"><div class="etiqueta">Gastos extra</div><div class="valor">${dinero(totalGastos)}</div></div>
+      <div class="tarjeta-resumen"><div class="etiqueta">Disponible</div><div class="valor">${dinero(disponible)}</div></div>
     `;
+
+    const avisoInversionDiv = document.getElementById('avisoInversion');
+    if (inversionInicial > 0) {
+      if (disponible >= inversionInicial) {
+        const gananciaNeta = disponible - inversionInicial;
+        avisoInversionDiv.innerHTML = `<div class="aviso" style="background:var(--sage-bg);border-color:#c7d6c2;">🎉 <div><strong>¡Recuperaste la inversión!</strong>A partir de acá es ganancia neta: ${dinero(gananciaNeta)}</div></div>`;
+      } else {
+        const falta = inversionInicial - disponible;
+        avisoInversionDiv.innerHTML = `<div class="aviso">📈 <div><strong>Todavía recuperando la inversión</strong>Te faltan ${dinero(falta)} de ${dinero(inversionInicial)}</div></div>`;
+      }
+    } else {
+      avisoInversionDiv.innerHTML = '';
+    }
 
     const avisoDiv = document.getElementById('avisoStockBajo');
     if (bajos.length) {
@@ -1172,6 +1245,126 @@ document.getElementById('btnGuardarPago').addEventListener('click', async () => 
 
     cerrarHoja('hojaPago', 'fondoHojaPago');
     cargarVentas();
+    cargarInicio();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+// ============================================================
+// GASTOS EXTRA
+// ============================================================
+
+let cacheGastos = [];
+
+async function cargarGastos() {
+  try {
+    cacheGastos = await api('/api/gastos');
+
+    const totalGastos = cacheGastos.reduce((acc, g) => acc + Number(g.monto), 0);
+    document.getElementById('resumenGastos').innerHTML = `
+      <div class="tarjeta-resumen"><div class="etiqueta">Total gastado</div><div class="valor">${dinero(totalGastos)}</div></div>
+      <div class="tarjeta-resumen"><div class="etiqueta">Cantidad de gastos</div><div class="valor">${cacheGastos.length}</div></div>
+    `;
+
+    pintarGastos(cacheGastos);
+  } catch (error) {
+    document.getElementById('listaGastos').innerHTML = `<div class="vacio">${error.message}</div>`;
+  }
+}
+
+function pintarGastos(gastos) {
+  const cont = document.getElementById('listaGastos');
+
+  if (!gastos.length) {
+    cont.innerHTML = '<div class="vacio">Todavía no cargaste ningún gasto. Tocá + para cargar el primero.</div>';
+    return;
+  }
+
+  cont.innerHTML = gastos.map(g => `
+    <div class="movimiento">
+      <div class="swatch" style="background:var(--amber-bg);">💸</div>
+      <div class="mov-info">
+        <div class="mov-titulo">${g.motivo || 'Sin motivo'}</div>
+        <div class="mov-sub">${fechaCorta(g.fecha)}</div>
+      </div>
+      <div class="mov-derecha"><div class="mov-monto">${dinero(g.monto)}</div></div>
+      <button class="btn-borrar" onclick="event.stopPropagation(); borrarGasto(${g.id})">🗑️</button>
+    </div>`).join('');
+}
+
+document.getElementById('buscarGastos').addEventListener('input', (e) => {
+  const texto = e.target.value.trim().toLowerCase();
+  pintarGastos(cacheGastos.filter(g => (g.motivo || '').toLowerCase().includes(texto)));
+});
+
+async function borrarGasto(id) {
+  if (!confirm('¿Querés eliminar este gasto?')) return;
+  try {
+    await api(`/api/gastos/${id}`, {method: 'DELETE'});
+    cargarGastos();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+function abrirNuevoGasto() {
+  document.getElementById('gastoMotivo').value = '';
+  document.getElementById('gastoMonto').value = 0;
+  document.getElementById('gastoError').style.display = 'none';
+  abrirHoja('hojaGasto', 'fondoHojaGasto');
+}
+
+document.getElementById('btnGuardarGasto').addEventListener('click', async () => {
+  const errorEl = document.getElementById('gastoError');
+  errorEl.style.display = 'none';
+
+  try {
+    await api('/api/gastos', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        motivo: document.getElementById('gastoMotivo').value,
+        monto: document.getElementById('gastoMonto').value
+      })
+    });
+
+    cerrarHoja('hojaGasto', 'fondoHojaGasto');
+    cargarGastos();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+// ---- Inversión inicial ----
+
+document.getElementById('linkConfigInversion').addEventListener('click', async () => {
+  try {
+    const config = await api('/api/config');
+    document.getElementById('inversionMonto').value = config.inversion_inicial || 0;
+    document.getElementById('inversionError').style.display = 'none';
+    abrirHoja('hojaInversion', 'fondoHojaInversion');
+  } catch (error) {
+    alert(error.message);
+  }
+});
+
+document.getElementById('btnGuardarInversion').addEventListener('click', async () => {
+  const errorEl = document.getElementById('inversionError');
+  errorEl.style.display = 'none';
+
+  try {
+    await api('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({inversion_inicial: document.getElementById('inversionMonto').value})
+    });
+
+    cerrarHoja('hojaInversion', 'fondoHojaInversion');
     cargarInicio();
 
   } catch (error) {
