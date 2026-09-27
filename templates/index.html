@@ -1612,25 +1612,59 @@ async function abrirNuevoPedido() {
   select.innerHTML = '<option>Cargando…</option>';
 
   productosParaSelect = await api('/api/productos');
-  select.innerHTML = productosParaSelect.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+  select.innerHTML = productosParaSelect.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('')
+    + '<option value="__nuevo__">➕ Agregar producto nuevo</option>';
 
   document.getElementById('pedidoCantidad').value = 1;
   document.getElementById('pedidoCliente').value = '';
   document.getElementById('pedidoError').style.display = 'none';
 
+  select.onchange = (e) => {
+    if (e.target.value === '__nuevo__') {
+      manejarNuevoProductoDesdePedido();
+    }
+  };
+
   abrirHoja('hojaPedido', 'fondoHojaPedido');
+
+  // Si todavía no hay ningún producto cargado, forzamos el alta igual
+  // que en Compras (ver comentario en abrirNuevaCompra).
+  if (productosParaSelect.length === 0) {
+    await manejarNuevoProductoDesdePedido();
+  }
+}
+
+async function manejarNuevoProductoDesdePedido() {
+  cerrarHoja('hojaPedido', 'fondoHojaPedido');
+  await abrirNuevoProducto(false);
+
+  // Al guardar el producto nuevo, reabrimos el pedido automáticamente:
+  const boton = document.getElementById('btnGuardarProducto');
+  const volver = () => {
+    boton.removeEventListener('click', volver);
+    setTimeout(abrirNuevoPedido, 200);
+  };
+  boton.addEventListener('click', volver);
 }
 
 document.getElementById('btnGuardarPedido').addEventListener('click', async () => {
   const errorEl = document.getElementById('pedidoError');
   errorEl.style.display = 'none';
 
+  const productoId = document.getElementById('pedidoProducto').value;
+
+  if (!productoId || productoId === '__nuevo__') {
+    errorEl.textContent = 'Seleccioná un producto.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
   try {
     await api('/api/pedidos', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        producto_id: document.getElementById('pedidoProducto').value,
+        producto_id: productoId,
         cantidad: document.getElementById('pedidoCantidad').value,
         cliente: document.getElementById('pedidoCliente').value
       })
