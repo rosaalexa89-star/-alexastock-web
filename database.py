@@ -113,6 +113,19 @@ def crear_tablas():
         """)
 
         cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pedidos (
+                id SERIAL PRIMARY KEY,
+                producto_id INTEGER NOT NULL,
+                producto_nombre TEXT NOT NULL,
+                cantidad INTEGER NOT NULL,
+                precio_unitario REAL NOT NULL,
+                cliente TEXT DEFAULT '',
+                notas TEXT DEFAULT '',
+                fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS config (
                 clave TEXT PRIMARY KEY,
                 valor REAL NOT NULL DEFAULT 0
@@ -877,6 +890,127 @@ def guardar_inversion_inicial(monto):
     except Exception as error:
         conexion.rollback()
         return False, f"Error al guardar la inversión inicial: {error}"
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+
+# ==========================================
+# PEDIDOS (encargos de clientes, todavía sin pagar ni entregar)
+# ==========================================
+
+def obtener_pedidos():
+    conexion = conectar()
+    cursor = _dict_cursor(conexion)
+
+    try:
+        cursor.execute("""
+            SELECT id, producto_id, producto_nombre, cantidad, precio_unitario,
+                   cliente, notas, fecha
+            FROM pedidos
+            ORDER BY fecha ASC, id ASC
+        """)
+        return [dict(fila) for fila in cursor.fetchall()]
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+
+def agregar_pedido(producto_id, cantidad, precio_unitario, cliente, notas):
+    conexion = conectar()
+    cursor = conexion.cursor()
+
+    try:
+        cursor.execute("SELECT nombre FROM productos WHERE id = %s", (producto_id,))
+        resultado = cursor.fetchone()
+
+        if resultado is None:
+            return False, "El producto no existe.", None
+
+        producto_nombre = resultado[0]
+
+        if cantidad <= 0:
+            return False, "La cantidad debe ser mayor a cero.", None
+
+        cursor.execute("""
+            INSERT INTO pedidos (producto_id, producto_nombre, cantidad, precio_unitario, cliente, notas)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (producto_id, producto_nombre, cantidad, precio_unitario, cliente or "", notas or ""))
+
+        nuevo_id = cursor.fetchone()[0]
+        conexion.commit()
+        return True, "Pedido agregado correctamente.", nuevo_id
+
+    except Exception as error:
+        conexion.rollback()
+        return False, f"Error al agregar el pedido: {error}", None
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+
+def eliminar_pedido(pedido_id):
+    conexion = conectar()
+    cursor = conexion.cursor()
+
+    try:
+        cursor.execute("DELETE FROM pedidos WHERE id = %s", (pedido_id,))
+        conexion.commit()
+        return True, "Pedido eliminado correctamente."
+
+    except Exception as error:
+        conexion.rollback()
+        return False, f"Error al eliminar el pedido: {error}"
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+
+def entregar_pedido(pedido_id, medio_pago, pagado):
+    conexion = conectar()
+    cursor = conexion.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT producto_id, cantidad, precio_unitario, cliente
+            FROM pedidos WHERE id = %s
+        """, (pedido_id,))
+        pedido = cursor.fetchone()
+
+        if pedido is None:
+            return False, "El pedido no existe."
+
+        producto_id, cantidad, precio_unitario, cliente = pedido
+
+    finally:
+        cursor.close()
+        conexion.close()
+
+    # Reutilizamos la misma lógica que una venta nueva: valida stock,
+    # calcula ganancia con el costo actual del producto y descuenta stock.
+    exito, mensaje = registrar_venta(
+        producto_id, cantidad, precio_unitario, medio_pago, cliente, pagado
+    )
+
+    if not exito:
+        return False, mensaje
+
+    conexion = conectar()
+    cursor = conexion.cursor()
+
+    try:
+        cursor.execute("DELETE FROM pedidos WHERE id = %s", (pedido_id,))
+        conexion.commit()
+        return True, "Pedido entregado y registrado como venta."
+
+    except Exception as error:
+        conexion.rollback()
+        return False, f"La venta se registró, pero hubo un error al borrar el pedido: {error}"
 
     finally:
         cursor.close()
