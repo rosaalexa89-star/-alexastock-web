@@ -440,8 +440,8 @@
   <div class="fondo-hoja" id="fondoHojaInfo"></div>
   <div class="hoja" id="hojaInfo">
     <div class="hoja-agarre"></div>
-    <h3 id="infoTitulo">Info</h3>
-    <p id="infoTexto" style="font-size:14px;color:var(--ink);line-height:1.5;"></p>
+    <h3 id="infoTitulo">Detalle</h3>
+    <div id="infoContenido"></div>
     <button class="btn-guardar" id="btnCerrarInfo" style="background:var(--ink-soft);">Entendido</button>
   </div>
 
@@ -548,13 +548,17 @@ document.getElementById('btnFab').addEventListener('click', () => {
 // DETALLE (al tocar un producto, compra o venta)
 // ============================================================
 
-function mostrarDetalle(titulo, filas, onEditar) {
-  document.getElementById('detalleTitulo').textContent = titulo;
-  document.getElementById('detalleContenido').innerHTML = filas.map(([etiqueta, valor]) => `
+function filasHTML(filas) {
+  return filas.map(([etiqueta, valor]) => `
     <div style="display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px dashed var(--line);">
       <span style="color:var(--ink-soft);font-size:13px;">${etiqueta}</span>
       <span style="font-weight:600;font-size:13.5px;text-align:right;">${valor}</span>
     </div>`).join('');
+}
+
+function mostrarDetalle(titulo, filas, onEditar) {
+  document.getElementById('detalleTitulo').textContent = titulo;
+  document.getElementById('detalleContenido').innerHTML = filasHTML(filas);
 
   const btnEditar = document.getElementById('btnEditarDesdeDetalle');
 
@@ -576,39 +580,74 @@ document.getElementById('btnCerrarDetalle').addEventListener('click', () => {
   cerrarHoja('hojaDetalle', 'fondoHojaDetalle');
 });
 
-const EXPLICACIONES_RESUMEN = {
-  total_vendido: {
-    titulo: 'Total vendido',
-    texto: 'Es la suma del total de todas las ventas que cargaste (cantidad × precio de cada una), te hayan pagado o no. No te fijes en este número para saber cuánta plata tenés hoy.'
-  },
-  pendiente: {
-    titulo: 'Pendiente de cobro',
-    texto: 'Es la suma de lo que todavía te deben tus clientes: el total de cada venta menos lo que ya te pagaron de esa venta.'
-  },
-  ganancia: {
-    titulo: 'Ganancia',
-    texto: 'Es la suma de (precio de venta − costo) × cantidad, de cada venta cargada. Es la ganancia "de papel" del negocio, no necesariamente plata que ya tenés en la mano (por ejemplo, si esa venta todavía no te la pagaron del todo).'
-  },
-  stock_bajo: {
-    titulo: 'Stock bajo',
-    texto: 'Es la cantidad de productos cuyo stock actual llegó o bajó del "stock mínimo" que le configuraste a ese producto.'
-  },
-  gastos_extra: {
-    titulo: 'Gastos extra',
-    texto: 'Es la suma de todos los gastos que cargaste en la pestaña "Gastos" (por ejemplo, plata que sacaste para uso personal o para comprar insumos).'
-  },
-  disponible: {
-    titulo: 'Disponible',
-    texto: 'Se calcula así: (Total vendido − Pendiente de cobro) − Gastos extra. Es decir, lo que efectivamente cobraste de tus ventas, menos lo que gastaste. Ojo: esto suma TODOS los medios de pago (efectivo, transferencia, Mercado Pago, etc.), no solo el efectivo que tenés en la billetera. Si vendiste algo por transferencia, ese monto entra acá aunque no lo tengas en billetes.'
-  }
+const TITULOS_RESUMEN = {
+  total_vendido: 'Detalle de lo vendido',
+  pendiente: 'Quién te debe',
+  ganancia: 'Detalle de ganancia',
+  stock_bajo: 'Productos con poco stock',
+  gastos_extra: 'Detalle de gastos',
+  disponible: 'Detalle de lo disponible'
 };
 
-function mostrarInfoResumen(clave) {
-  const info = EXPLICACIONES_RESUMEN[clave];
-  if (!info) return;
-  document.getElementById('infoTitulo').textContent = info.titulo;
-  document.getElementById('infoTexto').textContent = info.texto;
+async function mostrarInfoResumen(clave) {
+  document.getElementById('infoTitulo').textContent = TITULOS_RESUMEN[clave] || 'Detalle';
+  document.getElementById('infoContenido').innerHTML = '<div class="cargando">Cargando…</div>';
   abrirHoja('hojaInfo', 'fondoHojaInfo');
+
+  try {
+    let filas = [];
+
+    if (clave === 'total_vendido') {
+      const ventas = await api('/api/ventas');
+      filas = ventas.map(v => [`${v.producto_nombre} ×${v.cantidad} · ${fechaCorta(v.fecha)}`, dinero(v.total)]);
+      if (!filas.length) filas = [['Todavía no cargaste ninguna venta', '']];
+
+    } else if (clave === 'pendiente') {
+      const ventas = await api('/api/ventas');
+      const porCliente = {};
+      ventas.filter(v => v.saldo > 0).forEach(v => {
+        const nombre = (v.cliente && v.cliente.trim()) ? v.cliente.trim() : 'Sin nombre';
+        porCliente[nombre] = (porCliente[nombre] || 0) + Number(v.saldo);
+      });
+      filas = Object.entries(porCliente).map(([nombre, saldo]) => [nombre, dinero(saldo)]);
+      if (!filas.length) filas = [['No tenés cobros pendientes 🎉', '']];
+
+    } else if (clave === 'ganancia') {
+      const ventas = await api('/api/ventas');
+      filas = ventas.map(v => [`${v.producto_nombre} ×${v.cantidad} · ${fechaCorta(v.fecha)}`, dinero(v.ganancia)]);
+      if (!filas.length) filas = [['Todavía no cargaste ninguna venta', '']];
+
+    } else if (clave === 'gastos_extra') {
+      const gastos = await api('/api/gastos');
+      filas = gastos.map(g => [`${g.motivo || 'Sin motivo'} · ${fechaCorta(g.fecha)}`, dinero(g.monto)]);
+      if (!filas.length) filas = [['Todavía no cargaste ningún gasto', '']];
+
+    } else if (clave === 'stock_bajo') {
+      const productos = await api('/api/productos');
+      const bajos = productos.filter(p => p.stock_minimo > 0 && p.stock <= p.stock_minimo);
+      filas = bajos.map(p => [p.nombre, `Stock: ${p.stock} (mín. ${p.stock_minimo})`]);
+      if (!filas.length) filas = [['No tenés productos con poco stock 🎉', '']];
+
+    } else if (clave === 'disponible') {
+      const [ventas, gastos] = await Promise.all([api('/api/ventas'), api('/api/gastos')]);
+      const porMedio = {};
+      let totalCobrado = 0;
+      ventas.forEach(v => {
+        porMedio[v.medio_pago] = (porMedio[v.medio_pago] || 0) + Number(v.pagado);
+        totalCobrado += Number(v.pagado);
+      });
+      filas = Object.entries(porMedio).map(([medio, monto]) => [medio, dinero(monto)]);
+      const totalGastos = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
+      if (totalGastos > 0) filas.push(['Gastos extra', '− ' + dinero(totalGastos)]);
+      filas.push(['Total disponible', dinero(totalCobrado - totalGastos)]);
+      if (!ventas.length) filas = [['Todavía no cobraste ninguna venta', '']];
+    }
+
+    document.getElementById('infoContenido').innerHTML = filasHTML(filas);
+
+  } catch (error) {
+    document.getElementById('infoContenido').innerHTML = `<div class="vacio">${error.message}</div>`;
+  }
 }
 
 document.getElementById('btnCerrarInfo').addEventListener('click', () => {
