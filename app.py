@@ -207,6 +207,25 @@ def api_registrar_pago(venta_id):
     return jsonify({"ok": False, "mensaje": mensaje}), 400
 
 
+@app.route("/api/ventas/<int:venta_id>", methods=["PUT"])
+def api_editar_venta(venta_id):
+    datos = request.get_json(force=True)
+
+    exito, mensaje = database.editar_venta(
+        venta_id=venta_id,
+        cantidad=int(datos.get("cantidad", 0) or 0),
+        precio_unitario=float(datos.get("precio_unitario", 0) or 0),
+        medio_pago=datos.get("medio_pago", ""),
+        cliente=datos.get("cliente", ""),
+        pagado=float(datos.get("pagado", 0) or 0),
+    )
+
+    if exito:
+        return jsonify({"ok": True, "mensaje": mensaje})
+
+    return jsonify({"ok": False, "mensaje": mensaje}), 400
+
+
 @app.route("/api/ventas/<int:venta_id>", methods=["DELETE"])
 def api_eliminar_venta(venta_id):
     exito, mensaje = database.eliminar_venta(venta_id)
