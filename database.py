@@ -918,18 +918,18 @@ def obtener_pedidos():
         conexion.close()
 
 
-def agregar_pedido(producto_id, cantidad, precio_unitario, cliente, notas):
+def agregar_pedido(producto_id, cantidad, cliente, notas=""):
     conexion = conectar()
     cursor = conexion.cursor()
 
     try:
-        cursor.execute("SELECT nombre FROM productos WHERE id = %s", (producto_id,))
+        cursor.execute("SELECT nombre, precio_venta FROM productos WHERE id = %s", (producto_id,))
         resultado = cursor.fetchone()
 
         if resultado is None:
             return False, "El producto no existe.", None
 
-        producto_nombre = resultado[0]
+        producto_nombre, precio_venta = resultado
 
         if cantidad <= 0:
             return False, "La cantidad debe ser mayor a cero.", None
@@ -938,7 +938,7 @@ def agregar_pedido(producto_id, cantidad, precio_unitario, cliente, notas):
             INSERT INTO pedidos (producto_id, producto_nombre, cantidad, precio_unitario, cliente, notas)
             VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING id
-        """, (producto_id, producto_nombre, cantidad, precio_unitario, cliente or "", notas or ""))
+        """, (producto_id, producto_nombre, cantidad, precio_venta, cliente or "", notas or ""))
 
         nuevo_id = cursor.fetchone()[0]
         conexion.commit()
@@ -971,13 +971,13 @@ def eliminar_pedido(pedido_id):
         conexion.close()
 
 
-def entregar_pedido(pedido_id, medio_pago, pagado):
+def entregar_pedido(pedido_id, precio_unitario, medio_pago, pagado):
     conexion = conectar()
     cursor = conexion.cursor()
 
     try:
         cursor.execute("""
-            SELECT producto_id, cantidad, precio_unitario, cliente
+            SELECT producto_id, cantidad, cliente
             FROM pedidos WHERE id = %s
         """, (pedido_id,))
         pedido = cursor.fetchone()
@@ -985,7 +985,7 @@ def entregar_pedido(pedido_id, medio_pago, pagado):
         if pedido is None:
             return False, "El pedido no existe."
 
-        producto_id, cantidad, precio_unitario, cliente = pedido
+        producto_id, cantidad, cliente = pedido
 
     finally:
         cursor.close()
