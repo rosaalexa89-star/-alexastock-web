@@ -341,5 +341,58 @@ def api_guardar_config():
     return jsonify({"ok": False, "mensaje": mensaje}), 400
 
 
+# ============================================================
+# PEDIDOS
+# ============================================================
+
+@app.route("/api/pedidos", methods=["GET"])
+def api_obtener_pedidos():
+    return jsonify(database.obtener_pedidos())
+
+
+@app.route("/api/pedidos", methods=["POST"])
+def api_agregar_pedido():
+    datos = request.get_json(force=True)
+
+    exito, mensaje, nuevo_id = database.agregar_pedido(
+        producto_id=datos.get("producto_id"),
+        cantidad=int(datos.get("cantidad", 0) or 0),
+        precio_unitario=float(datos.get("precio_unitario", 0) or 0),
+        cliente=datos.get("cliente", ""),
+        notas=datos.get("notas", ""),
+    )
+
+    if exito:
+        return jsonify({"ok": True, "mensaje": mensaje, "id": nuevo_id})
+
+    return jsonify({"ok": False, "mensaje": mensaje}), 400
+
+
+@app.route("/api/pedidos/<int:pedido_id>", methods=["DELETE"])
+def api_eliminar_pedido(pedido_id):
+    exito, mensaje = database.eliminar_pedido(pedido_id)
+
+    if exito:
+        return jsonify({"ok": True, "mensaje": mensaje})
+
+    return jsonify({"ok": False, "mensaje": mensaje}), 400
+
+
+@app.route("/api/pedidos/<int:pedido_id>/entregar", methods=["POST"])
+def api_entregar_pedido(pedido_id):
+    datos = request.get_json(force=True)
+
+    exito, mensaje = database.entregar_pedido(
+        pedido_id=pedido_id,
+        medio_pago=datos.get("medio_pago", ""),
+        pagado=float(datos.get("pagado", 0) or 0),
+    )
+
+    if exito:
+        return jsonify({"ok": True, "mensaje": mensaje})
+
+    return jsonify({"ok": False, "mensaje": mensaje}), 400
+
+
 if __name__ == "__main__":
     app.run(debug=True)
