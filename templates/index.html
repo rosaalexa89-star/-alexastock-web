@@ -362,7 +362,8 @@
   <div class="fondo-hoja" id="fondoHojaVenta"></div>
   <div class="hoja" id="hojaVenta">
     <div class="hoja-agarre"></div>
-    <h3>Nueva venta</h3>
+    <h3 id="ventaHojaTitulo">Nueva venta</h3>
+    <input type="hidden" id="ventaId" value="">
     <div class="campo">
       <label>Producto</label>
       <select id="ventaProducto"></select>
@@ -433,6 +434,15 @@
     </div>
     <p class="error-form" id="inversionError"></p>
     <button class="btn-guardar" id="btnGuardarInversion">Guardar</button>
+  </div>
+
+  <!-- ===================== HOJA: INFO DE UNA TARJETA DEL RESUMEN ===================== -->
+  <div class="fondo-hoja" id="fondoHojaInfo"></div>
+  <div class="hoja" id="hojaInfo">
+    <div class="hoja-agarre"></div>
+    <h3 id="infoTitulo">Info</h3>
+    <p id="infoTexto" style="font-size:14px;color:var(--ink);line-height:1.5;"></p>
+    <button class="btn-guardar" id="btnCerrarInfo" style="background:var(--ink-soft);">Entendido</button>
   </div>
 
   <!-- ===================== HOJA: DETALLE (producto/compra/venta) ===================== -->
@@ -517,7 +527,7 @@ function cerrarHoja(idHoja, idFondo) {
   document.getElementById(idFondo).classList.remove('abierto');
 }
 
-['Producto', 'Compra', 'Venta', 'Pago', 'Gasto', 'Inversion', 'Detalle'].forEach(nombre => {
+['Producto', 'Compra', 'Venta', 'Pago', 'Gasto', 'Inversion', 'Info', 'Detalle'].forEach(nombre => {
   document.getElementById('fondoHoja' + nombre).addEventListener('click', () => {
     cerrarHoja('hoja' + nombre, 'fondoHoja' + nombre);
   });
@@ -564,6 +574,45 @@ function mostrarDetalle(titulo, filas, onEditar) {
 
 document.getElementById('btnCerrarDetalle').addEventListener('click', () => {
   cerrarHoja('hojaDetalle', 'fondoHojaDetalle');
+});
+
+const EXPLICACIONES_RESUMEN = {
+  total_vendido: {
+    titulo: 'Total vendido',
+    texto: 'Es la suma del total de todas las ventas que cargaste (cantidad × precio de cada una), te hayan pagado o no. No te fijes en este número para saber cuánta plata tenés hoy.'
+  },
+  pendiente: {
+    titulo: 'Pendiente de cobro',
+    texto: 'Es la suma de lo que todavía te deben tus clientes: el total de cada venta menos lo que ya te pagaron de esa venta.'
+  },
+  ganancia: {
+    titulo: 'Ganancia',
+    texto: 'Es la suma de (precio de venta − costo) × cantidad, de cada venta cargada. Es la ganancia "de papel" del negocio, no necesariamente plata que ya tenés en la mano (por ejemplo, si esa venta todavía no te la pagaron del todo).'
+  },
+  stock_bajo: {
+    titulo: 'Stock bajo',
+    texto: 'Es la cantidad de productos cuyo stock actual llegó o bajó del "stock mínimo" que le configuraste a ese producto.'
+  },
+  gastos_extra: {
+    titulo: 'Gastos extra',
+    texto: 'Es la suma de todos los gastos que cargaste en la pestaña "Gastos" (por ejemplo, plata que sacaste para uso personal o para comprar insumos).'
+  },
+  disponible: {
+    titulo: 'Disponible',
+    texto: 'Se calcula así: (Total vendido − Pendiente de cobro) − Gastos extra. Es decir, lo que efectivamente cobraste de tus ventas, menos lo que gastaste. Ojo: esto suma TODOS los medios de pago (efectivo, transferencia, Mercado Pago, etc.), no solo el efectivo que tenés en la billetera. Si vendiste algo por transferencia, ese monto entra acá aunque no lo tengas en billetes.'
+  }
+};
+
+function mostrarInfoResumen(clave) {
+  const info = EXPLICACIONES_RESUMEN[clave];
+  if (!info) return;
+  document.getElementById('infoTitulo').textContent = info.titulo;
+  document.getElementById('infoTexto').textContent = info.texto;
+  abrirHoja('hojaInfo', 'fondoHojaInfo');
+}
+
+document.getElementById('btnCerrarInfo').addEventListener('click', () => {
+  cerrarHoja('hojaInfo', 'fondoHojaInfo');
 });
 
 function verDetalleProducto(id) {
@@ -646,7 +695,7 @@ function verDetalleVenta(id) {
     ['Saldo', dinero(v.saldo)],
     ['Estado', estado],
     ['Fecha', new Date(v.fecha).toLocaleString('es-AR')]
-  ]);
+  ], () => abrirEditarVenta(v));
 }
 
 // ============================================================
@@ -672,12 +721,12 @@ async function cargarInicio() {
     const inversionInicial = Number(config.inversion_inicial) || 0;
 
     document.getElementById('resumenGrid').innerHTML = `
-      <div class="tarjeta-resumen"><div class="etiqueta">Total vendido</div><div class="valor">${dinero(reporte.total_ventas)}</div></div>
-      <div class="tarjeta-resumen"><div class="etiqueta">Pendiente de cobro</div><div class="valor">${dinero(reporte.total_pendiente)}</div></div>
-      <div class="tarjeta-resumen"><div class="etiqueta">Ganancia</div><div class="valor">${dinero(reporte.ganancia)}</div></div>
-      <div class="tarjeta-resumen ${bajos.length ? 'alerta' : ''}"><div class="etiqueta">Stock bajo</div><div class="valor">${bajos.length} prod.</div></div>
-      <div class="tarjeta-resumen"><div class="etiqueta">Gastos extra</div><div class="valor">${dinero(totalGastos)}</div></div>
-      <div class="tarjeta-resumen"><div class="etiqueta">Disponible</div><div class="valor">${dinero(disponible)}</div></div>
+      <div class="tarjeta-resumen" onclick="mostrarInfoResumen('total_vendido')" style="cursor:pointer;"><div class="etiqueta">Total vendido</div><div class="valor">${dinero(reporte.total_ventas)}</div></div>
+      <div class="tarjeta-resumen" onclick="mostrarInfoResumen('pendiente')" style="cursor:pointer;"><div class="etiqueta">Pendiente de cobro</div><div class="valor">${dinero(reporte.total_pendiente)}</div></div>
+      <div class="tarjeta-resumen" onclick="mostrarInfoResumen('ganancia')" style="cursor:pointer;"><div class="etiqueta">Ganancia</div><div class="valor">${dinero(reporte.ganancia)}</div></div>
+      <div class="tarjeta-resumen ${bajos.length ? 'alerta' : ''}" onclick="mostrarInfoResumen('stock_bajo')" style="cursor:pointer;"><div class="etiqueta">Stock bajo</div><div class="valor">${bajos.length} prod.</div></div>
+      <div class="tarjeta-resumen" onclick="mostrarInfoResumen('gastos_extra')" style="cursor:pointer;"><div class="etiqueta">Gastos extra</div><div class="valor">${dinero(totalGastos)}</div></div>
+      <div class="tarjeta-resumen" onclick="mostrarInfoResumen('disponible')" style="cursor:pointer;"><div class="etiqueta">Disponible</div><div class="valor">${dinero(disponible)}</div></div>
     `;
 
     const avisoInversionDiv = document.getElementById('avisoInversion');
@@ -1150,12 +1199,46 @@ async function abrirNuevaVenta() {
   selectMedio.innerHTML = metodos.map(m => `<option value="${m}">${m}</option>`).join('')
     + '<option value="__nuevo__">➕ Nuevo método de pago</option>';
 
+  document.getElementById('ventaId').value = '';
+  document.getElementById('ventaHojaTitulo').textContent = 'Nueva venta';
+  document.getElementById('ventaProducto').disabled = false;
   document.getElementById('ventaCantidad').value = 1;
   document.getElementById('ventaCliente').value = '';
   document.getElementById('ventaPagado').value = 0;
   document.getElementById('ventaError').style.display = 'none';
 
   actualizarPrecioVenta();
+
+  abrirHoja('hojaVenta', 'fondoHojaVenta');
+}
+
+async function abrirEditarVenta(venta) {
+  const selectProd = document.getElementById('ventaProducto');
+  const selectMedio = document.getElementById('ventaMedioPago');
+  selectProd.innerHTML = '<option>Cargando…</option>';
+  selectMedio.innerHTML = '<option>Cargando…</option>';
+
+  const [productos, metodos] = await Promise.all([
+    api('/api/productos'),
+    api('/api/metodos_pago')
+  ]);
+
+  productosParaSelect = productos;
+
+  selectProd.innerHTML = productos.map(p => `<option value="${p.id}" data-precio="${p.precio_venta}" data-stock="${p.stock}">${p.nombre} (Stock: ${p.stock})</option>`).join('');
+  selectMedio.innerHTML = metodos.map(m => `<option value="${m}">${m}</option>`).join('')
+    + '<option value="__nuevo__">➕ Nuevo método de pago</option>';
+
+  document.getElementById('ventaId').value = venta.id;
+  document.getElementById('ventaHojaTitulo').textContent = 'Editar venta';
+  selectProd.value = venta.producto_id;
+  selectProd.disabled = true; // no se puede cambiar el producto de una venta ya cargada
+  document.getElementById('ventaCantidad').value = venta.cantidad;
+  document.getElementById('ventaPrecio').value = venta.precio_unitario;
+  selectMedio.value = venta.medio_pago;
+  document.getElementById('ventaCliente').value = venta.cliente || '';
+  document.getElementById('ventaPagado').value = venta.pagado;
+  document.getElementById('ventaError').style.display = 'none';
 
   abrirHoja('hojaVenta', 'fondoHojaVenta');
 }
@@ -1196,22 +1279,34 @@ document.getElementById('btnGuardarVenta').addEventListener('click', async () =>
     return;
   }
 
+  const ventaId = document.getElementById('ventaId').value;
+  const datos = {
+    producto_id: document.getElementById('ventaProducto').value,
+    cantidad: document.getElementById('ventaCantidad').value,
+    precio_unitario: document.getElementById('ventaPrecio').value,
+    medio_pago: medioPago,
+    cliente: document.getElementById('ventaCliente').value,
+    pagado: document.getElementById('ventaPagado').value
+  };
+
   try {
-    await api('/api/ventas', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        producto_id: document.getElementById('ventaProducto').value,
-        cantidad: document.getElementById('ventaCantidad').value,
-        precio_unitario: document.getElementById('ventaPrecio').value,
-        medio_pago: medioPago,
-        cliente: document.getElementById('ventaCliente').value,
-        pagado: document.getElementById('ventaPagado').value
-      })
-    });
+    if (ventaId) {
+      await api(`/api/ventas/${ventaId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(datos)
+      });
+    } else {
+      await api('/api/ventas', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(datos)
+      });
+    }
 
     cerrarHoja('hojaVenta', 'fondoHojaVenta');
     cargarVentas();
+    cargarInicio();
 
   } catch (error) {
     errorEl.textContent = error.message;
