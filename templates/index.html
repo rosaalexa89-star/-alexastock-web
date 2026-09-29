@@ -448,6 +448,10 @@
       <label>Cliente</label>
       <input type="text" id="pedidoCliente" placeholder="Nombre del cliente">
     </div>
+    <div class="campo">
+      <label>Nota (opcional)</label>
+      <input type="text" id="pedidoNotas" placeholder="Ej: color celeste, talle M…">
+    </div>
     <p class="error-form" id="pedidoError"></p>
     <button class="btn-guardar" id="btnGuardarPedido">Guardar pedido</button>
   </div>
@@ -1608,6 +1612,7 @@ function pintarPedidos(pedidos) {
       <div class="mov-info">
         <div class="mov-titulo">${p.producto_nombre} ×${p.cantidad}</div>
         <div class="mov-sub">${p.cliente || 'Sin cliente'} · ${fechaCorta(p.fecha)}</div>
+        ${p.notas ? `<div class="mov-sub" style="color:var(--berry-dark);font-weight:500;">${p.notas}</div>` : ''}
       </div>
       <div class="mov-derecha"><div class="mov-monto" style="font-size:12px;color:var(--ink-soft);">≈ ${dinero(p.precio_unitario * p.cantidad)}</div></div>
       <button class="btn-borrar" title="Entregar" onclick="event.stopPropagation(); abrirEntregarPedido(${p.id})">✅</button>
@@ -1635,6 +1640,7 @@ async function abrirNuevoPedido() {
 
   document.getElementById('pedidoCantidad').value = 1;
   document.getElementById('pedidoCliente').value = '';
+  document.getElementById('pedidoNotas').value = '';
   document.getElementById('pedidoError').style.display = 'none';
 
   select.onchange = (e) => {
@@ -1746,7 +1752,8 @@ document.getElementById('btnGuardarPedido').addEventListener('click', async () =
       body: JSON.stringify({
         producto_id: productoId,
         cantidad: document.getElementById('pedidoCantidad').value,
-        cliente: document.getElementById('pedidoCliente').value
+        cliente: document.getElementById('pedidoCliente').value,
+        notas: document.getElementById('pedidoNotas').value
       })
     });
 
