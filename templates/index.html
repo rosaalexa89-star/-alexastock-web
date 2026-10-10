@@ -362,6 +362,10 @@
       <label>Proveedor (opcional)</label>
       <input type="text" id="compraProveedor" placeholder="Nombre del proveedor">
     </div>
+    <div class="campo" style="display:flex;align-items:center;gap:10px;">
+      <input type="checkbox" id="compraDeBilletera" checked style="width:20px;height:20px;flex-shrink:0;">
+      <label for="compraDeBilletera" style="margin:0;font-size:13px;color:var(--ink);">Pagué con la plata de la billetera (reinversión)</label>
+    </div>
     <p class="error-form" id="compraError"></p>
     <button class="btn-guardar" id="btnGuardarCompra">Guardar compra</button>
   </div>
@@ -713,10 +717,10 @@ async function mostrarInfoResumen(clave) {
       });
       filas = Object.entries(porMedio).map(([medio, monto]) => [medio, dinero(monto)]);
       const totalGastos = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
-      const totalCompras = Number(reporte.total_compras) || 0;
+      const totalReinversion = Number(reporte.total_compras_billetera) || 0;
       if (totalGastos > 0) filas.push(['Gastos extra', '− ' + dinero(totalGastos)]);
-      if (totalCompras > 0) filas.push(['Compras (mercadería)', '− ' + dinero(totalCompras)]);
-      filas.push(['Total disponible', dinero(totalCobrado - totalGastos - totalCompras)]);
+      if (totalReinversion > 0) filas.push(['Reinversión (compras con la billetera)', '− ' + dinero(totalReinversion)]);
+      filas.push(['Total disponible', dinero(totalCobrado - totalGastos - totalReinversion)]);
       if (!ventas.length) filas = [['Todavía no cobraste ninguna venta', '']];
     }
 
@@ -788,6 +792,7 @@ function verDetalleCompra(id) {
   filas.push(['Costo unitario (equivalente en $)', dinero(c.costo_unitario_ars)]);
   filas.push(['Total (equivalente en $)', dinero(c.total_ars)]);
   filas.push(['Proveedor', c.proveedor || 'Sin proveedor']);
+  filas.push(['Pagada con la billetera', c.de_billetera ? 'Sí' : 'No']);
   filas.push(['Fecha', new Date(c.fecha).toLocaleString('es-AR')]);
 
   mostrarDetalle('Detalle de compra', filas);
@@ -832,9 +837,9 @@ async function cargarInicio() {
     const bajos = stockBajo.filter(p => p.stock_minimo > 0 && p.stock <= p.stock_minimo);
 
     const totalGastos = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
-    const totalCompras = Number(reporte.total_compras) || 0;
+    const totalReinversion = Number(reporte.total_compras_billetera) || 0;
     const recaudado = Number(reporte.total_ventas) - Number(reporte.total_pendiente);
-    const disponible = recaudado - totalGastos - totalCompras;
+    const disponible = recaudado - totalGastos - totalReinversion;
     const inversionInicial = Number(config.inversion_inicial) || 0;
 
     document.getElementById('resumenGrid').innerHTML = `
@@ -1164,6 +1169,7 @@ async function abrirNuevaCompra() {
   document.getElementById('compraPrecio').value = 0;
   document.getElementById('compraCotizacion').value = 0;
   document.getElementById('compraProveedor').value = '';
+  document.getElementById('compraDeBilletera').checked = true;
   document.getElementById('compraError').style.display = 'none';
   compraSetMoneda('ARS');
 
@@ -1226,7 +1232,8 @@ document.getElementById('btnGuardarCompra').addEventListener('click', async () =
         moneda: document.getElementById('hojaCompra').dataset.moneda || 'ARS',
         precio_unitario: document.getElementById('compraPrecio').value,
         cotizacion: document.getElementById('compraCotizacion').value,
-        proveedor: document.getElementById('compraProveedor').value
+        proveedor: document.getElementById('compraProveedor').value,
+        de_billetera: document.getElementById('compraDeBilletera').checked
       })
     });
 
