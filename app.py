@@ -260,6 +260,7 @@ def api_registrar_compra():
         precio_unitario=float(datos.get("precio_unitario", 0) or 0),
         cotizacion=float(datos.get("cotizacion", 0) or 0),
         proveedor=datos.get("proveedor", ""),
+        de_billetera=bool(datos.get("de_billetera", False)),
     )
 
     if exito:
@@ -422,12 +423,13 @@ def api_exportar_excel():
     hoja_compras = wb.create_sheet("Compras")
     hoja_compras.append([
         "Fecha", "Producto", "Cantidad", "Moneda", "Costo unitario ($)",
-        "Total ($)", "Proveedor"
+        "Total ($)", "Proveedor", "Pagada con billetera"
     ])
     for c in database.obtener_compras():
         hoja_compras.append([
             fecha_txt(c["fecha"]), c["producto_nombre"], c["cantidad"], c["moneda"],
-            c["costo_unitario_ars"], c["total_ars"], c["proveedor"]
+            c["costo_unitario_ars"], c["total_ars"], c["proveedor"],
+            "Sí" if c["de_billetera"] else "No"
         ])
 
     # --- Gastos extra ---
