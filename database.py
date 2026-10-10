@@ -92,6 +92,11 @@ def crear_tablas():
         """)
 
         cursor.execute("""
+            ALTER TABLE compras
+            ADD COLUMN IF NOT EXISTS de_billetera BOOLEAN NOT NULL DEFAULT FALSE
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS historial_costos (
                 id SERIAL PRIMARY KEY,
                 producto_id INTEGER NOT NULL,
@@ -614,7 +619,7 @@ def obtener_compras(limite=None):
         consulta = """
             SELECT id, producto_id, producto_nombre, cantidad, precio_unitario_bs,
                    total_bs, cotizacion, costo_unitario_ars, total_ars, proveedor,
-                   moneda, fecha
+                   moneda, fecha, de_billetera
             FROM compras
             ORDER BY fecha DESC, id DESC
         """
@@ -631,7 +636,7 @@ def obtener_compras(limite=None):
         conexion.close()
 
 
-def registrar_compra(producto_id, cantidad, moneda, precio_unitario, cotizacion, proveedor):
+def registrar_compra(producto_id, cantidad, moneda, precio_unitario, cotizacion, proveedor, de_billetera=False):
     conexion = conectar()
     cursor = conexion.cursor()
 
@@ -673,10 +678,11 @@ def registrar_compra(producto_id, cantidad, moneda, precio_unitario, cotizacion,
         cursor.execute("""
             INSERT INTO compras
             (producto_id, producto_nombre, cantidad, precio_unitario_bs, total_bs,
-             cotizacion, costo_unitario_ars, total_ars, proveedor, moneda)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             cotizacion, costo_unitario_ars, total_ars, proveedor, moneda, de_billetera)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (producto_id, producto_nombre, cantidad, precio_unitario_bs, total_bs,
-              cotizacion_guardada, precio_unitario_ars, total_ars, proveedor or "", moneda))
+              cotizacion_guardada, precio_unitario_ars, total_ars, proveedor or "", moneda,
+              bool(de_billetera)))
 
         cursor.execute("UPDATE productos SET stock = stock + %s, costo = %s WHERE id = %s",
                         (cantidad, precio_unitario_ars, producto_id))
@@ -766,6 +772,9 @@ def obtener_reporte():
         cursor.execute("SELECT COALESCE(SUM(total_ars), 0) FROM compras")
         total_compras = cursor.fetchone()[0]
 
+        cursor.execute("SELECT COALESCE(SUM(total_ars), 0) FROM compras WHERE de_billetera")
+        total_compras_billetera = cursor.fetchone()[0]
+
         cursor.execute("""
             SELECT COUNT(*) FROM productos
             WHERE stock_minimo > 0 AND stock <= stock_minimo
@@ -778,6 +787,7 @@ def obtener_reporte():
             "total_pendiente": float(total_pendiente),
             "ganancia": float(ganancia),
             "total_compras": float(total_compras),
+            "total_compras_billetera": float(total_compras_billetera),
             "productos_stock_bajo": productos_stock_bajo
         }
 
