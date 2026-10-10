@@ -500,4 +500,1345 @@
   <div class="hoja" id="hojaInversion">
     <div class="hoja-agarre"></div>
     <h3>Inversión inicial</h3>
-    <p style="font-size:13px;color:var(--ink-soft);margin-top:-8px;">Lo que pusiste para arrancar el emprendimiento
+    <p style="font-size:13px;color:var(--ink-soft);margin-top:-8px;">Lo que pusiste para arrancar el emprendimiento. Cuando lo recaudado menos los gastos supere este monto, te avisamos.</p>
+    <div class="campo">
+      <label>Monto ($)</label>
+      <input type="number" id="inversionMonto" value="0" min="0" step="0.01">
+    </div>
+    <p class="error-form" id="inversionError"></p>
+    <button class="btn-guardar" id="btnGuardarInversion">Guardar</button>
+  </div>
+
+  <!-- ===================== HOJA: INFO DE UNA TARJETA DEL RESUMEN ===================== -->
+  <div class="fondo-hoja" id="fondoHojaInfo"></div>
+  <div class="hoja" id="hojaInfo">
+    <div class="hoja-agarre"></div>
+    <h3 id="infoTitulo">Detalle</h3>
+    <div id="infoContenido"></div>
+    <button class="btn-guardar" id="btnCerrarInfo" style="background:var(--ink-soft);">Entendido</button>
+  </div>
+
+  <!-- ===================== HOJA: DETALLE (producto/compra/venta) ===================== -->
+  <div class="fondo-hoja" id="fondoHojaDetalle"></div>
+  <div class="hoja" id="hojaDetalle">
+    <div class="hoja-agarre"></div>
+    <h3 id="detalleTitulo">Detalle</h3>
+    <div id="detalleContenido"></div>
+    <button class="btn-guardar" id="btnEditarDesdeDetalle" style="display:none;">✏️ Editar</button>
+    <button class="btn-guardar" id="btnCerrarDetalle" style="background:var(--ink-soft);margin-top:16px;">Cerrar</button>
+  </div>
+
+</div>
+
+<script>
+
+// ============================================================
+// UTILIDADES
+// ============================================================
+
+function dinero(v) {
+  const n = Number(v) || 0;
+  return '$ ' + n.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function fechaCorta(iso) {
+  const f = new Date(iso);
+  const hoy = new Date();
+  const diffDias = Math.floor((hoy - f) / (1000 * 60 * 60 * 24));
+  if (diffDias === 0) return 'hoy';
+  if (diffDias === 1) return 'ayer';
+  return f.toLocaleDateString('es-AR', {day: 'numeric', month: 'short'});
+}
+
+async function api(url, options) {
+  const respuesta = await fetch(url, options);
+  const datos = await respuesta.json().catch(() => ({}));
+  if (!respuesta.ok) {
+    throw new Error(datos.mensaje || 'Ocurrió un error. Probá de nuevo.');
+  }
+  return datos;
+}
+
+document.getElementById('fechaHoy').textContent = new Date().toLocaleDateString('es-AR', {
+  weekday: 'long', day: 'numeric', month: 'long'
+});
+
+// ============================================================
+// NAVEGACIÓN ENTRE PESTAÑAS
+// ============================================================
+
+const tabs = document.querySelectorAll('.tab');
+const vistas = document.querySelectorAll('.vista');
+
+tabs.forEach(tab => {
+  tab.addEventListener('click', () => {
+    tabs.forEach(t => t.classList.remove('activo'));
+    vistas.forEach(v => v.classList.remove('activa'));
+    tab.classList.add('activo');
+    document.getElementById('vista-' + tab.dataset.vista).classList.add('activa');
+    window.scrollTo(0, 0);
+
+    if (tab.dataset.vista === 'inicio') cargarInicio();
+    if (tab.dataset.vista === 'inventario') cargarInventario();
+    if (tab.dataset.vista === 'compras') cargarCompras();
+    if (tab.dataset.vista === 'ventas') cargarVentas();
+    if (tab.dataset.vista === 'gastos') cargarGastos();
+    if (tab.dataset.vista === 'pedidos') cargarPedidos();
+  });
+});
+
+// ============================================================
+// HOJAS (bottom sheets) — abrir / cerrar
+// ============================================================
+
+function abrirHoja(idHoja, idFondo) {
+  document.getElementById(idHoja).classList.add('abierta');
+  document.getElementById(idFondo).classList.add('abierto');
+}
+
+function cerrarHoja(idHoja, idFondo) {
+  document.getElementById(idHoja).classList.remove('abierta');
+  document.getElementById(idFondo).classList.remove('abierto');
+}
+
+['Producto', 'ProductoRapido', 'Compra', 'Venta', 'Pago', 'Gasto', 'Inversion', 'Info', 'Pedido', 'Entregar', 'Detalle'].forEach(nombre => {
+  document.getElementById('fondoHoja' + nombre).addEventListener('click', () => {
+    cerrarHoja('hoja' + nombre, 'fondoHoja' + nombre);
+  });
+});
+
+// El botón + abre una hoja distinta según en qué pestaña estás parada.
+document.getElementById('btnFab').addEventListener('click', () => {
+  const vistaActiva = document.querySelector('.vista.activa').id;
+
+  if (vistaActiva === 'vista-inventario') abrirNuevoProducto();
+  else if (vistaActiva === 'vista-compras') abrirNuevaCompra();
+  else if (vistaActiva === 'vista-ventas') abrirNuevaVenta();
+  else if (vistaActiva === 'vista-gastos') abrirNuevoGasto();
+  else if (vistaActiva === 'vista-pedidos') abrirNuevoPedido();
+  else abrirNuevaVenta(); // desde Inicio, la acción más común es cargar una venta
+});
+
+// ============================================================
+// DETALLE (al tocar un producto, compra o venta)
+// ============================================================
+
+function filasHTML(filas) {
+  return filas.map(([etiqueta, valor]) => `
+    <div style="display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px dashed var(--line);">
+      <span style="color:var(--ink-soft);font-size:13px;">${etiqueta}</span>
+      <span style="font-weight:600;font-size:13.5px;text-align:right;">${valor}</span>
+    </div>`).join('');
+}
+
+function mostrarDetalle(titulo, filas, onEditar) {
+  document.getElementById('detalleTitulo').textContent = titulo;
+  document.getElementById('detalleContenido').innerHTML = filasHTML(filas);
+
+  const btnEditar = document.getElementById('btnEditarDesdeDetalle');
+
+  if (onEditar) {
+    btnEditar.style.display = '';
+    btnEditar.onclick = () => {
+      cerrarHoja('hojaDetalle', 'fondoHojaDetalle');
+      onEditar();
+    };
+  } else {
+    btnEditar.style.display = 'none';
+    btnEditar.onclick = null;
+  }
+
+  abrirHoja('hojaDetalle', 'fondoHojaDetalle');
+}
+
+document.getElementById('btnCerrarDetalle').addEventListener('click', () => {
+  cerrarHoja('hojaDetalle', 'fondoHojaDetalle');
+});
+
+const TITULOS_RESUMEN = {
+  total_vendido: 'Detalle de lo vendido',
+  pendiente: 'Quién te debe',
+  ganancia: 'Detalle de ganancia',
+  stock_bajo: 'Productos con poco stock',
+  gastos_extra: 'Detalle de gastos',
+  disponible: 'Detalle de lo disponible'
+};
+
+async function mostrarInfoResumen(clave) {
+  document.getElementById('infoTitulo').textContent = TITULOS_RESUMEN[clave] || 'Detalle';
+  document.getElementById('infoContenido').innerHTML = '<div class="cargando">Cargando…</div>';
+  abrirHoja('hojaInfo', 'fondoHojaInfo');
+
+  try {
+    let filas = [];
+
+    if (clave === 'total_vendido') {
+      const ventas = await api('/api/ventas');
+      filas = ventas.map(v => [`${v.producto_nombre} ×${v.cantidad} · ${fechaCorta(v.fecha)}`, dinero(v.total)]);
+      if (!filas.length) filas = [['Todavía no cargaste ninguna venta', '']];
+
+    } else if (clave === 'pendiente') {
+      const ventas = await api('/api/ventas');
+      const porCliente = {};
+      ventas.filter(v => v.saldo > 0).forEach(v => {
+        const nombre = (v.cliente && v.cliente.trim()) ? v.cliente.trim() : 'Sin nombre';
+        porCliente[nombre] = (porCliente[nombre] || 0) + Number(v.saldo);
+      });
+      filas = Object.entries(porCliente).map(([nombre, saldo]) => [nombre, dinero(saldo)]);
+      if (!filas.length) filas = [['No tenés cobros pendientes 🎉', '']];
+
+    } else if (clave === 'ganancia') {
+      const ventas = await api('/api/ventas');
+      filas = ventas.map(v => [`${v.producto_nombre} ×${v.cantidad} · ${fechaCorta(v.fecha)}`, dinero(v.ganancia)]);
+      if (!filas.length) filas = [['Todavía no cargaste ninguna venta', '']];
+
+    } else if (clave === 'gastos_extra') {
+      const gastos = await api('/api/gastos');
+      filas = gastos.map(g => [`${g.motivo || 'Sin motivo'} · ${fechaCorta(g.fecha)}`, dinero(g.monto)]);
+      if (!filas.length) filas = [['Todavía no cargaste ningún gasto', '']];
+
+    } else if (clave === 'stock_bajo') {
+      const productos = await api('/api/productos');
+      const bajos = productos.filter(p => p.stock_minimo > 0 && p.stock <= p.stock_minimo);
+      filas = bajos.map(p => [p.nombre, `Stock: ${p.stock} (mín. ${p.stock_minimo})`]);
+      if (!filas.length) filas = [['No tenés productos con poco stock 🎉', '']];
+
+    } else if (clave === 'disponible') {
+      const [ventas, gastos, reporte] = await Promise.all([api('/api/ventas'), api('/api/gastos'), api('/api/reporte')]);
+      const porMedio = {};
+      let totalCobrado = 0;
+      ventas.forEach(v => {
+        porMedio[v.medio_pago] = (porMedio[v.medio_pago] || 0) + Number(v.pagado);
+        totalCobrado += Number(v.pagado);
+      });
+      filas = Object.entries(porMedio).map(([medio, monto]) => [medio, dinero(monto)]);
+      const totalGastos = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
+      const totalCompras = Number(reporte.total_compras) || 0;
+      if (totalGastos > 0) filas.push(['Gastos extra', '− ' + dinero(totalGastos)]);
+      if (totalCompras > 0) filas.push(['Compras (mercadería)', '− ' + dinero(totalCompras)]);
+      filas.push(['Total disponible', dinero(totalCobrado - totalGastos - totalCompras)]);
+      if (!ventas.length) filas = [['Todavía no cobraste ninguna venta', '']];
+    }
+
+    document.getElementById('infoContenido').innerHTML = filasHTML(filas);
+
+  } catch (error) {
+    document.getElementById('infoContenido').innerHTML = `<div class="vacio">${error.message}</div>`;
+  }
+}
+
+document.getElementById('btnCerrarInfo').addEventListener('click', () => {
+  cerrarHoja('hojaInfo', 'fondoHojaInfo');
+});
+
+function verDetalleProducto(id) {
+  const p = cacheProductos.find(x => x.id === id);
+  if (!p) return;
+
+  mostrarDetalle(p.nombre, [
+    ['Categoría', p.categoria || 'Sin categoría'],
+    ['Costo', dinero(p.costo)],
+    ['Precio de venta', dinero(p.precio_venta)],
+    ['Ganancia por unidad', dinero(p.precio_venta - p.costo)],
+    ['Stock actual', p.stock],
+    ['Stock mínimo', p.stock_minimo]
+  ], () => abrirEditarProducto(p));
+}
+
+async function abrirEditarProducto(producto) {
+  const select = document.getElementById('prodCategoria');
+  select.innerHTML = '<option>Cargando…</option>';
+
+  const categorias = await api('/api/categorias');
+  pintarSelectCategorias(categorias);
+
+  document.getElementById('prodHojaTitulo').textContent = 'Editar producto';
+  document.getElementById('prodId').value = producto.id;
+  document.getElementById('prodNombre').value = producto.nombre;
+  document.getElementById('prodCategoria').value = producto.categoria || '';
+  document.getElementById('prodCosto').value = producto.costo;
+  document.getElementById('prodPrecio').value = producto.precio_venta;
+  document.getElementById('prodStock').value = producto.stock;
+  document.getElementById('prodStockMinimo').value = producto.stock_minimo;
+  document.getElementById('prodError').style.display = 'none';
+  document.getElementById('campoStockInicial').style.display = '';
+  document.getElementById('campoCostoInicial').style.display = '';
+
+  abrirHoja('hojaProducto', 'fondoHojaProducto');
+}
+
+function verDetalleCompra(id) {
+  const c = cacheCompras.find(x => x.id === id);
+  if (!c) return;
+
+  const filas = [
+    ['Producto', c.producto_nombre],
+    ['Cantidad', c.cantidad],
+    ['Moneda', c.moneda]
+  ];
+
+  if (c.moneda === 'Bs') {
+    filas.push(['Precio unitario pagado', `${Number(c.precio_unitario_bs).toLocaleString('es-AR', {minimumFractionDigits: 2})} Bs`]);
+    filas.push(['Total pagado', `${Number(c.total_bs).toLocaleString('es-AR', {minimumFractionDigits: 2})} Bs`]);
+    filas.push(['Cotización usada', c.cotizacion]);
+  } else {
+    filas.push(['Precio unitario pagado', dinero(c.costo_unitario_ars)]);
+  }
+
+  filas.push(['Costo unitario (equivalente en $)', dinero(c.costo_unitario_ars)]);
+  filas.push(['Total (equivalente en $)', dinero(c.total_ars)]);
+  filas.push(['Proveedor', c.proveedor || 'Sin proveedor']);
+  filas.push(['Fecha', new Date(c.fecha).toLocaleString('es-AR')]);
+
+  mostrarDetalle('Detalle de compra', filas);
+}
+
+function verDetalleVenta(id) {
+  const v = cacheVentas.find(x => x.id === id);
+  if (!v) return;
+
+  const estado = v.saldo == 0 ? 'Pagado' : (v.pagado == 0 ? 'Pendiente' : 'Pago parcial');
+
+  mostrarDetalle('Detalle de venta', [
+    ['Producto', v.producto_nombre],
+    ['Cantidad', v.cantidad],
+    ['Precio unitario', dinero(v.precio_unitario)],
+    ['Total', dinero(v.total)],
+    ['Ganancia', dinero(v.ganancia)],
+    ['Medio de pago', v.medio_pago],
+    ['Cliente', v.cliente || 'Sin cliente'],
+    ['Pagado', dinero(v.pagado)],
+    ['Saldo', dinero(v.saldo)],
+    ['Estado', estado],
+    ['Fecha', new Date(v.fecha).toLocaleString('es-AR')]
+  ], () => abrirEditarVenta(v));
+}
+
+// ============================================================
+// INICIO
+// ============================================================
+
+async function cargarInicio() {
+  try {
+    const [reporte, ventas, compras, stockBajo, gastos, config] = await Promise.all([
+      api('/api/reporte'),
+      api('/api/ventas?limite=5'),
+      api('/api/compras?limite=5'),
+      api('/api/productos'),
+      api('/api/gastos'),
+      api('/api/config')
+    ]);
+
+    const bajos = stockBajo.filter(p => p.stock_minimo > 0 && p.stock <= p.stock_minimo);
+
+    const totalGastos = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
+    const totalCompras = Number(reporte.total_compras) || 0;
+    const recaudado = Number(reporte.total_ventas) - Number(reporte.total_pendiente);
+    const disponible = recaudado - totalGastos - totalCompras;
+    const inversionInicial = Number(config.inversion_inicial) || 0;
+
+    document.getElementById('resumenGrid').innerHTML = `
+      <div class="tarjeta-resumen" onclick="mostrarInfoResumen('total_vendido')" style="cursor:pointer;"><div class="etiqueta">Total vendido</div><div class="valor">${dinero(reporte.total_ventas)}</div></div>
+      <div class="tarjeta-resumen" onclick="mostrarInfoResumen('pendiente')" style="cursor:pointer;"><div class="etiqueta">Pendiente de cobro</div><div class="valor">${dinero(reporte.total_pendiente)}</div></div>
+      <div class="tarjeta-resumen" onclick="mostrarInfoResumen('ganancia')" style="cursor:pointer;"><div class="etiqueta">Ganancia</div><div class="valor">${dinero(reporte.ganancia)}</div></div>
+      <div class="tarjeta-resumen ${bajos.length ? 'alerta' : ''}" onclick="mostrarInfoResumen('stock_bajo')" style="cursor:pointer;"><div class="etiqueta">Stock bajo</div><div class="valor">${bajos.length} prod.</div></div>
+      <div class="tarjeta-resumen" onclick="mostrarInfoResumen('gastos_extra')" style="cursor:pointer;"><div class="etiqueta">Gastos extra</div><div class="valor">${dinero(totalGastos)}</div></div>
+      <div class="tarjeta-resumen" onclick="mostrarInfoResumen('disponible')" style="cursor:pointer;"><div class="etiqueta">Disponible</div><div class="valor">${dinero(disponible)}</div></div>
+    `;
+
+    const avisoInversionDiv = document.getElementById('avisoInversion');
+    if (inversionInicial > 0) {
+      if (disponible >= inversionInicial) {
+        const gananciaNeta = disponible - inversionInicial;
+        avisoInversionDiv.innerHTML = `<div class="aviso" style="background:var(--sage-bg);border-color:#c7d6c2;">🎉 <div><strong>¡Recuperaste la inversión!</strong>A partir de acá es ganancia neta: ${dinero(gananciaNeta)}</div></div>`;
+      } else {
+        const falta = inversionInicial - disponible;
+        avisoInversionDiv.innerHTML = `<div class="aviso">📈 <div><strong>Todavía recuperando la inversión</strong>Te faltan ${dinero(falta)} de ${dinero(inversionInicial)}</div></div>`;
+      }
+    } else {
+      avisoInversionDiv.innerHTML = '';
+    }
+
+    const avisoDiv = document.getElementById('avisoStockBajo');
+    if (bajos.length) {
+      const nombres = bajos.slice(0, 5).map(p => p.nombre).join(', ');
+      const extra = bajos.length > 5 ? ` y ${bajos.length - 5} más` : '';
+      avisoDiv.innerHTML = `<div class="aviso">⚠️ <div><strong>${bajos.length} producto(s) con poco stock</strong>${nombres}${extra}</div></div>`;
+    } else {
+      avisoDiv.innerHTML = '';
+    }
+
+    const movimientos = [
+      ...ventas.map(v => ({...v, tipo: 'venta'})),
+      ...compras.map(c => ({...c, tipo: 'compra'}))
+    ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 6);
+
+    const cont = document.getElementById('listaMovimientos');
+
+    if (!movimientos.length) {
+      cont.innerHTML = '<div class="vacio">Todavía no cargaste ninguna venta ni compra.</div>';
+      return;
+    }
+
+    cont.innerHTML = movimientos.map(m => {
+      if (m.tipo === 'venta') {
+        const estado = m.saldo == 0 ? 'pill-pagado' : (m.pagado == 0 ? 'pill-pendiente' : 'pill-parcial');
+        const texto = m.saldo == 0 ? 'Pagado' : (m.pagado == 0 ? 'Pendiente' : 'Parcial');
+        return `
+          <div class="movimiento">
+            <div class="swatch" style="background:var(--sage-bg);">🛒</div>
+            <div class="mov-info">
+              <div class="mov-titulo">${m.producto_nombre}</div>
+              <div class="mov-sub">Venta · ${m.cliente || 'Sin cliente'} · ${fechaCorta(m.fecha)}</div>
+            </div>
+            <div class="mov-derecha">
+              <div class="mov-monto">${dinero(m.total)}</div>
+              <span class="estado-pill ${estado}">${texto}</span>
+            </div>
+          </div>`;
+      } else {
+        return `
+          <div class="movimiento">
+            <div class="swatch" style="background:#e7e1f2;">📥</div>
+            <div class="mov-info">
+              <div class="mov-titulo">${m.producto_nombre}</div>
+              <div class="mov-sub">Compra · ${m.proveedor || 'Sin proveedor'} · ${fechaCorta(m.fecha)}</div>
+            </div>
+            <div class="mov-derecha"><div class="mov-monto">${dinero(m.total_ars)}</div></div>
+          </div>`;
+      }
+    }).join('');
+
+  } catch (error) {
+    document.getElementById('listaMovimientos').innerHTML = `<div class="vacio">${error.message}</div>`;
+  }
+}
+
+// ============================================================
+// INVENTARIO
+// ============================================================
+
+let cacheProductos = [];
+
+async function cargarInventario() {
+  try {
+    const productos = await api('/api/productos');
+    cacheProductos = productos.filter(p => p.stock > 0);
+    document.getElementById('tituloInventario').textContent = `Productos (${cacheProductos.length})`;
+    pintarInventario(cacheProductos);
+  } catch (error) {
+    document.getElementById('listaInventario').innerHTML = `<div class="vacio">${error.message}</div>`;
+  }
+}
+
+function pintarInventario(productos) {
+  const cont = document.getElementById('listaInventario');
+
+  if (!productos.length) {
+    cont.innerHTML = '<div class="vacio">No tenés productos con stock disponible. Los que llegan a 0 se ocultan acá (podés reponerlos desde Compras).</div>';
+    return;
+  }
+
+  cont.innerHTML = productos.map(p => {
+    const bajo = p.stock_minimo > 0 && p.stock <= p.stock_minimo;
+    return `
+      <div class="producto" onclick="verDetalleProducto(${p.id})" style="cursor:pointer;">
+        <div class="swatch">📦</div>
+        <div class="producto-info">
+          <div class="producto-nombre">${p.nombre}</div>
+          <div class="producto-cat">${p.categoria || 'Sin categoría'}</div>
+        </div>
+        <div class="producto-derecha">
+          <div class="producto-precio">${dinero(p.precio_venta)}</div>
+          <span class="badge-stock ${bajo ? 'badge-bajo' : 'badge-ok'}">Stock: ${p.stock}</span>
+        </div>
+        <button class="btn-borrar" onclick="event.stopPropagation(); borrarProducto(${p.id}, '${p.nombre.replace(/'/g, "\\'")}')">🗑️</button>
+      </div>`;
+  }).join('');
+}
+
+document.getElementById('buscarInventario').addEventListener('input', (e) => {
+  const texto = e.target.value.trim().toLowerCase();
+  const filtrados = cacheProductos.filter(p =>
+    p.nombre.toLowerCase().includes(texto) || (p.categoria || '').toLowerCase().includes(texto)
+  );
+  pintarInventario(filtrados);
+});
+
+async function borrarProducto(id, nombre) {
+  if (!confirm(`¿Querés eliminar "${nombre}"?`)) return;
+  try {
+    await api(`/api/productos/${id}`, {method: 'DELETE'});
+    cargarInventario();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+// ---- Hoja: nuevo producto ----
+
+function pintarSelectCategorias(categorias) {
+  const select = document.getElementById('prodCategoria');
+  select.innerHTML = categorias.map(c => `<option value="${c}">${c}</option>`).join('')
+    + '<option value="__nueva__">➕ Nueva categoría…</option>';
+}
+
+async function manejarNuevaCategoria() {
+  const select = document.getElementById('prodCategoria');
+  const nombre = prompt('Nombre de la nueva categoría:');
+
+  if (nombre && nombre.trim()) {
+    await api('/api/categorias', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({nombre})});
+    const categorias = await api('/api/categorias');
+    pintarSelectCategorias(categorias);
+    select.value = nombre.trim();
+  } else if (select.options.length > 1) {
+    select.selectedIndex = 0;
+  }
+}
+
+async function abrirNuevoProducto(desdeCompra = false) {
+  const select = document.getElementById('prodCategoria');
+  select.innerHTML = '<option>Cargando…</option>';
+
+  const categorias = await api('/api/categorias');
+  pintarSelectCategorias(categorias);
+
+  document.getElementById('prodHojaTitulo').textContent = 'Nuevo producto';
+  document.getElementById('prodId').value = '';
+  document.getElementById('prodNombre').value = '';
+  document.getElementById('prodCosto').value = 0;
+  document.getElementById('prodPrecio').value = 0;
+  document.getElementById('prodStock').value = 0;
+  document.getElementById('prodStockMinimo').value = 0;
+  document.getElementById('prodError').style.display = 'none';
+
+  // Cuando el producto se crea desde una compra, tanto el stock
+  // inicial como el costo se terminan definiendo con los datos de
+  // esa compra (cantidad, precio, moneda) — pedirlos acá también
+  // generaba confusión y duplicaba el stock. Los ocultamos en ese caso.
+  document.getElementById('campoStockInicial').style.display = desdeCompra ? 'none' : '';
+  document.getElementById('campoCostoInicial').style.display = desdeCompra ? 'none' : '';
+
+  abrirHoja('hojaProducto', 'fondoHojaProducto');
+
+  // Si todavía no hay ninguna categoría cargada, la única opción del
+  // combo es "Nueva categoría…" y ya está seleccionada por defecto —
+  // el navegador no avisa un "cambio" porque no cambió nada. Por eso
+  // disparamos la acción a mano en ese caso puntual.
+  if (categorias.length === 0) {
+    await manejarNuevaCategoria();
+  }
+}
+
+document.getElementById('prodCategoria').addEventListener('change', (e) => {
+  if (e.target.value === '__nueva__') {
+    manejarNuevaCategoria();
+  }
+});
+
+document.getElementById('btnGuardarProducto').addEventListener('click', async () => {
+  const errorEl = document.getElementById('prodError');
+  errorEl.style.display = 'none';
+
+  const id = document.getElementById('prodId').value;
+  const datos = {
+    nombre: document.getElementById('prodNombre').value,
+    categoria: document.getElementById('prodCategoria').value,
+    costo: document.getElementById('prodCosto').value,
+    precio_venta: document.getElementById('prodPrecio').value,
+    stock: document.getElementById('prodStock').value,
+    stock_minimo: document.getElementById('prodStockMinimo').value
+  };
+
+  try {
+    if (id) {
+      await api(`/api/productos/${id}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(datos)
+      });
+    } else {
+      await api('/api/productos', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(datos)
+      });
+    }
+
+    cerrarHoja('hojaProducto', 'fondoHojaProducto');
+    cargarInventario();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+// ============================================================
+// COMPRAS
+// ============================================================
+
+let cacheCompras = [];
+
+async function cargarCompras() {
+  try {
+    cacheCompras = await api('/api/compras');
+    pintarCompras(cacheCompras);
+  } catch (error) {
+    document.getElementById('listaCompras').innerHTML = `<div class="vacio">${error.message}</div>`;
+  }
+}
+
+function pintarCompras(compras) {
+  const cont = document.getElementById('listaCompras');
+
+  if (!compras.length) {
+    cont.innerHTML = '<div class="vacio">Todavía no cargaste ninguna compra. Tocá + para cargar la primera.</div>';
+    return;
+  }
+
+  cont.innerHTML = compras.map(c => `
+    <div class="movimiento" onclick="verDetalleCompra(${c.id})" style="cursor:pointer;">
+      <div class="swatch" style="background:#e7e1f2;">📥</div>
+      <div class="mov-info">
+        <div class="mov-titulo">${c.producto_nombre} ×${c.cantidad}</div>
+        <div class="mov-sub">${c.proveedor || 'Sin proveedor'} · ${c.moneda} · ${fechaCorta(c.fecha)}</div>
+      </div>
+      <div class="mov-derecha"><div class="mov-monto">${dinero(c.total_ars)}</div></div>
+      <button class="btn-borrar" onclick="event.stopPropagation(); borrarCompra(${c.id})">🗑️</button>
+    </div>`).join('');
+}
+
+document.getElementById('buscarCompras').addEventListener('input', (e) => {
+  const texto = e.target.value.trim().toLowerCase();
+  pintarCompras(cacheCompras.filter(c =>
+    c.producto_nombre.toLowerCase().includes(texto) || (c.proveedor || '').toLowerCase().includes(texto)
+  ));
+});
+
+async function borrarCompra(id) {
+  if (!confirm('¿Querés eliminar esta compra? El stock se va a descontar.')) return;
+  try {
+    await api(`/api/compras/${id}`, {method: 'DELETE'});
+    cargarCompras();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+// ---- Hoja: nueva compra ----
+
+let productosParaSelect = [];
+
+function pintarSelectProductosCompra() {
+  const select = document.getElementById('compraProducto');
+  select.innerHTML = productosParaSelect.map(p => `<option value="${p.id}">${p.nombre} (Stock: ${p.stock})</option>`).join('')
+    + '<option value="__nuevo__">➕ Agregar producto nuevo</option>';
+}
+
+async function manejarNuevoProductoDesdeCompra() {
+  cerrarHoja('hojaCompra', 'fondoHojaCompra');
+  await abrirNuevoProducto(true);
+
+  // Al guardar el producto nuevo, reabrimos la compra automáticamente:
+  const boton = document.getElementById('btnGuardarProducto');
+  const volver = () => {
+    boton.removeEventListener('click', volver);
+    setTimeout(abrirNuevaCompra, 200);
+  };
+  boton.addEventListener('click', volver);
+}
+
+async function abrirNuevaCompra() {
+  const select = document.getElementById('compraProducto');
+  select.innerHTML = '<option>Cargando…</option>';
+
+  productosParaSelect = await api('/api/productos');
+  pintarSelectProductosCompra();
+
+  document.getElementById('compraCantidad').value = 1;
+  document.getElementById('compraPrecio').value = 0;
+  document.getElementById('compraCotizacion').value = 0;
+  document.getElementById('compraProveedor').value = '';
+  document.getElementById('compraError').style.display = 'none';
+  compraSetMoneda('ARS');
+
+  abrirHoja('hojaCompra', 'fondoHojaCompra');
+
+  // Mismo caso que con categorías: si no hay ningún producto todavía,
+  // la única opción es "Agregar producto nuevo" y ya está seleccionada,
+  // así que el navegador no dispara "change". Lo forzamos a mano.
+  if (productosParaSelect.length === 0) {
+    await manejarNuevoProductoDesdeCompra();
+  }
+}
+
+document.getElementById('compraProducto').addEventListener('change', (e) => {
+  if (e.target.value === '__nuevo__') {
+    manejarNuevoProductoDesdeCompra();
+  }
+});
+
+function compraSetMoneda(moneda) {
+  const btnArs = document.getElementById('compraBtnArs');
+  const btnBs = document.getElementById('compraBtnBs');
+  const filaCot = document.getElementById('compraFilaCotizacion');
+  const label = document.getElementById('compraLabelPrecio');
+
+  if (moneda === 'ARS') {
+    btnArs.classList.add('activo'); btnBs.classList.remove('activo');
+    filaCot.classList.add('fila-oculta');
+    label.textContent = 'Precio unitario ($)';
+  } else {
+    btnBs.classList.add('activo'); btnArs.classList.remove('activo');
+    filaCot.classList.remove('fila-oculta');
+    label.textContent = 'Precio unitario (Bs)';
+  }
+  document.getElementById('hojaCompra').dataset.moneda = moneda;
+}
+
+document.getElementById('compraBtnArs').addEventListener('click', () => compraSetMoneda('ARS'));
+document.getElementById('compraBtnBs').addEventListener('click', () => compraSetMoneda('Bs'));
+
+document.getElementById('btnGuardarCompra').addEventListener('click', async () => {
+  const errorEl = document.getElementById('compraError');
+  errorEl.style.display = 'none';
+
+  const productoId = document.getElementById('compraProducto').value;
+
+  if (!productoId || productoId === '__nuevo__') {
+    errorEl.textContent = 'Seleccioná un producto.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    await api('/api/compras', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        producto_id: productoId,
+        cantidad: document.getElementById('compraCantidad').value,
+        moneda: document.getElementById('hojaCompra').dataset.moneda || 'ARS',
+        precio_unitario: document.getElementById('compraPrecio').value,
+        cotizacion: document.getElementById('compraCotizacion').value,
+        proveedor: document.getElementById('compraProveedor').value
+      })
+    });
+
+    cerrarHoja('hojaCompra', 'fondoHojaCompra');
+    cargarCompras();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+// ============================================================
+// VENTAS
+// ============================================================
+
+let cacheVentas = [];
+
+async function cargarVentas() {
+  try {
+    cacheVentas = await api('/api/ventas');
+    pintarVentas(cacheVentas);
+  } catch (error) {
+    document.getElementById('listaVentas').innerHTML = `<div class="vacio">${error.message}</div>`;
+  }
+}
+
+function pintarVentas(ventas) {
+  const cont = document.getElementById('listaVentas');
+
+  if (!ventas.length) {
+    cont.innerHTML = '<div class="vacio">Todavía no cargaste ninguna venta. Tocá + para cargar la primera.</div>';
+    return;
+  }
+
+  cont.innerHTML = ventas.map(v => {
+    const estado = v.saldo == 0 ? 'pill-pagado' : (v.pagado == 0 ? 'pill-pendiente' : 'pill-parcial');
+    const texto = v.saldo == 0 ? 'Pagado' : (v.pagado == 0 ? 'Pendiente' : 'Parcial');
+    const botonPago = v.saldo > 0 ? `<button class="btn-borrar" title="Registrar pago" onclick="event.stopPropagation(); abrirPago(${v.id}, ${v.saldo})">💰</button>` : '';
+
+    return `
+      <div class="movimiento" onclick="verDetalleVenta(${v.id})" style="cursor:pointer;">
+        <div class="swatch" style="background:var(--sage-bg);">🛒</div>
+        <div class="mov-info">
+          <div class="mov-titulo">${v.producto_nombre} ×${v.cantidad}</div>
+          <div class="mov-sub">${v.cliente || 'Sin cliente'} · ${fechaCorta(v.fecha)}</div>
+        </div>
+        <div class="mov-derecha">
+          <div class="mov-monto">${dinero(v.total)}</div>
+          <span class="estado-pill ${estado}">${texto}</span>
+        </div>
+        ${botonPago}
+        <button class="btn-borrar" onclick="event.stopPropagation(); borrarVenta(${v.id})">🗑️</button>
+      </div>`;
+  }).join('');
+}
+
+document.getElementById('buscarVentas').addEventListener('input', (e) => {
+  const texto = e.target.value.trim().toLowerCase();
+  pintarVentas(cacheVentas.filter(v =>
+    v.producto_nombre.toLowerCase().includes(texto) || (v.cliente || '').toLowerCase().includes(texto)
+  ));
+});
+
+async function borrarVenta(id) {
+  if (!confirm('¿Querés eliminar esta venta? El stock se va a restaurar.')) return;
+  try {
+    await api(`/api/ventas/${id}`, {method: 'DELETE'});
+    cargarVentas();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+// ---- Hoja: nueva venta ----
+
+async function abrirNuevaVenta() {
+  const selectProd = document.getElementById('ventaProducto');
+  const selectMedio = document.getElementById('ventaMedioPago');
+  selectProd.innerHTML = '<option>Cargando…</option>';
+  selectMedio.innerHTML = '<option>Cargando…</option>';
+
+  const [productos, metodos] = await Promise.all([
+    api('/api/productos'),
+    api('/api/metodos_pago')
+  ]);
+
+  productosParaSelect = productos;
+
+  selectProd.innerHTML = productos.map(p => `<option value="${p.id}" data-precio="${p.precio_venta}" data-stock="${p.stock}">${p.nombre} (Stock: ${p.stock})</option>`).join('');
+  selectMedio.innerHTML = metodos.map(m => `<option value="${m}">${m}</option>`).join('')
+    + '<option value="__nuevo__">➕ Nuevo método de pago</option>';
+
+  document.getElementById('ventaId').value = '';
+  document.getElementById('ventaHojaTitulo').textContent = 'Nueva venta';
+  document.getElementById('ventaProducto').disabled = false;
+  document.getElementById('ventaCantidad').value = 1;
+  document.getElementById('ventaCliente').value = '';
+  document.getElementById('ventaPagado').value = 0;
+  document.getElementById('ventaError').style.display = 'none';
+
+  actualizarPrecioVenta();
+
+  abrirHoja('hojaVenta', 'fondoHojaVenta');
+}
+
+async function abrirEditarVenta(venta) {
+  const selectProd = document.getElementById('ventaProducto');
+  const selectMedio = document.getElementById('ventaMedioPago');
+  selectProd.innerHTML = '<option>Cargando…</option>';
+  selectMedio.innerHTML = '<option>Cargando…</option>';
+
+  const [productos, metodos] = await Promise.all([
+    api('/api/productos'),
+    api('/api/metodos_pago')
+  ]);
+
+  productosParaSelect = productos;
+
+  selectProd.innerHTML = productos.map(p => `<option value="${p.id}" data-precio="${p.precio_venta}" data-stock="${p.stock}">${p.nombre} (Stock: ${p.stock})</option>`).join('');
+  selectMedio.innerHTML = metodos.map(m => `<option value="${m}">${m}</option>`).join('')
+    + '<option value="__nuevo__">➕ Nuevo método de pago</option>';
+
+  document.getElementById('ventaId').value = venta.id;
+  document.getElementById('ventaHojaTitulo').textContent = 'Editar venta';
+  selectProd.value = venta.producto_id;
+  selectProd.disabled = true; // no se puede cambiar el producto de una venta ya cargada
+  document.getElementById('ventaCantidad').value = venta.cantidad;
+  document.getElementById('ventaPrecio').value = venta.precio_unitario;
+  selectMedio.value = venta.medio_pago;
+  document.getElementById('ventaCliente').value = venta.cliente || '';
+  document.getElementById('ventaPagado').value = venta.pagado;
+  document.getElementById('ventaError').style.display = 'none';
+
+  abrirHoja('hojaVenta', 'fondoHojaVenta');
+}
+
+function actualizarPrecioVenta() {
+  const select = document.getElementById('ventaProducto');
+  const opcion = select.options[select.selectedIndex];
+  if (!opcion) return;
+  document.getElementById('ventaPrecio').value = opcion.dataset.precio || 0;
+  document.getElementById('ventaCantidad').max = opcion.dataset.stock || 1;
+}
+
+document.getElementById('ventaProducto').addEventListener('change', actualizarPrecioVenta);
+
+document.getElementById('ventaMedioPago').addEventListener('change', async (e) => {
+  if (e.target.value === '__nuevo__') {
+    const nombre = prompt('Nombre del nuevo método de pago:');
+    if (nombre && nombre.trim()) {
+      await api('/api/metodos_pago', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({nombre})});
+      const metodos = await api('/api/metodos_pago');
+      e.target.innerHTML = metodos.map(m => `<option value="${m}">${m}</option>`).join('')
+        + '<option value="__nuevo__">➕ Nuevo método de pago</option>';
+      e.target.value = nombre.trim();
+    } else {
+      e.target.selectedIndex = 0;
+    }
+  }
+});
+
+document.getElementById('btnGuardarVenta').addEventListener('click', async () => {
+  const errorEl = document.getElementById('ventaError');
+  errorEl.style.display = 'none';
+
+  const medioPago = document.getElementById('ventaMedioPago').value;
+  if (medioPago === '__nuevo__') {
+    errorEl.textContent = 'Seleccioná un método de pago.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  const ventaId = document.getElementById('ventaId').value;
+  const datos = {
+    producto_id: document.getElementById('ventaProducto').value,
+    cantidad: document.getElementById('ventaCantidad').value,
+    precio_unitario: document.getElementById('ventaPrecio').value,
+    medio_pago: medioPago,
+    cliente: document.getElementById('ventaCliente').value,
+    pagado: document.getElementById('ventaPagado').value
+  };
+
+  try {
+    if (ventaId) {
+      await api(`/api/ventas/${ventaId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(datos)
+      });
+    } else {
+      await api('/api/ventas', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(datos)
+      });
+    }
+
+    cerrarHoja('hojaVenta', 'fondoHojaVenta');
+    cargarVentas();
+    cargarInicio();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+// ---- Hoja: registrar pago ----
+
+let ventaIdParaPago = null;
+
+function abrirPago(ventaId, saldo) {
+  ventaIdParaPago = ventaId;
+  document.getElementById('pagoInfo').textContent = `Saldo pendiente: ${dinero(saldo)}`;
+  document.getElementById('pagoMonto').value = 0;
+  document.getElementById('pagoMonto').max = saldo;
+  document.getElementById('pagoError').style.display = 'none';
+  abrirHoja('hojaPago', 'fondoHojaPago');
+}
+
+document.getElementById('btnGuardarPago').addEventListener('click', async () => {
+  const errorEl = document.getElementById('pagoError');
+  errorEl.style.display = 'none';
+
+  try {
+    await api(`/api/ventas/${ventaIdParaPago}/pago`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({monto: document.getElementById('pagoMonto').value})
+    });
+
+    cerrarHoja('hojaPago', 'fondoHojaPago');
+    cargarVentas();
+    cargarInicio();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+// ============================================================
+// GASTOS EXTRA
+// ============================================================
+
+let cacheGastos = [];
+
+async function cargarGastos() {
+  try {
+    cacheGastos = await api('/api/gastos');
+
+    const totalGastos = cacheGastos.reduce((acc, g) => acc + Number(g.monto), 0);
+    document.getElementById('resumenGastos').innerHTML = `
+      <div class="tarjeta-resumen"><div class="etiqueta">Total gastado</div><div class="valor">${dinero(totalGastos)}</div></div>
+      <div class="tarjeta-resumen"><div class="etiqueta">Cantidad de gastos</div><div class="valor">${cacheGastos.length}</div></div>
+    `;
+
+    pintarGastos(cacheGastos);
+  } catch (error) {
+    document.getElementById('listaGastos').innerHTML = `<div class="vacio">${error.message}</div>`;
+  }
+}
+
+function pintarGastos(gastos) {
+  const cont = document.getElementById('listaGastos');
+
+  if (!gastos.length) {
+    cont.innerHTML = '<div class="vacio">Todavía no cargaste ningún gasto. Tocá + para cargar el primero.</div>';
+    return;
+  }
+
+  cont.innerHTML = gastos.map(g => `
+    <div class="movimiento">
+      <div class="swatch" style="background:var(--amber-bg);">💸</div>
+      <div class="mov-info">
+        <div class="mov-titulo">${g.motivo || 'Sin motivo'}</div>
+        <div class="mov-sub">${fechaCorta(g.fecha)}</div>
+      </div>
+      <div class="mov-derecha"><div class="mov-monto">${dinero(g.monto)}</div></div>
+      <button class="btn-borrar" onclick="event.stopPropagation(); borrarGasto(${g.id})">🗑️</button>
+    </div>`).join('');
+}
+
+document.getElementById('buscarGastos').addEventListener('input', (e) => {
+  const texto = e.target.value.trim().toLowerCase();
+  pintarGastos(cacheGastos.filter(g => (g.motivo || '').toLowerCase().includes(texto)));
+});
+
+async function borrarGasto(id) {
+  if (!confirm('¿Querés eliminar este gasto?')) return;
+  try {
+    await api(`/api/gastos/${id}`, {method: 'DELETE'});
+    cargarGastos();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+function abrirNuevoGasto() {
+  document.getElementById('gastoMotivo').value = '';
+  document.getElementById('gastoMonto').value = 0;
+  document.getElementById('gastoError').style.display = 'none';
+  abrirHoja('hojaGasto', 'fondoHojaGasto');
+}
+
+document.getElementById('btnGuardarGasto').addEventListener('click', async () => {
+  const errorEl = document.getElementById('gastoError');
+  errorEl.style.display = 'none';
+
+  try {
+    await api('/api/gastos', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        motivo: document.getElementById('gastoMotivo').value,
+        monto: document.getElementById('gastoMonto').value
+      })
+    });
+
+    cerrarHoja('hojaGasto', 'fondoHojaGasto');
+    cargarGastos();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+// ---- Inversión inicial ----
+
+document.getElementById('linkConfigInversion').addEventListener('click', async () => {
+  try {
+    const config = await api('/api/config');
+    document.getElementById('inversionMonto').value = config.inversion_inicial || 0;
+    document.getElementById('inversionError').style.display = 'none';
+    abrirHoja('hojaInversion', 'fondoHojaInversion');
+  } catch (error) {
+    alert(error.message);
+  }
+});
+
+document.getElementById('btnGuardarInversion').addEventListener('click', async () => {
+  const errorEl = document.getElementById('inversionError');
+  errorEl.style.display = 'none';
+
+  try {
+    await api('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({inversion_inicial: document.getElementById('inversionMonto').value})
+    });
+
+    cerrarHoja('hojaInversion', 'fondoHojaInversion');
+    cargarInicio();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+// ============================================================
+// PEDIDOS
+// ============================================================
+
+let cachePedidos = [];
+
+async function cargarPedidos() {
+  try {
+    cachePedidos = await api('/api/pedidos');
+    pintarPedidos(cachePedidos);
+  } catch (error) {
+    document.getElementById('listaPedidos').innerHTML = `<div class="vacio">${error.message}</div>`;
+  }
+}
+
+function pintarPedidos(pedidos) {
+  const cont = document.getElementById('listaPedidos');
+
+  if (!pedidos.length) {
+    cont.innerHTML = '<div class="vacio">No tenés pedidos pendientes. Tocá + para cargar uno.</div>';
+    return;
+  }
+
+  cont.innerHTML = pedidos.map(p => `
+    <div class="movimiento">
+      <div class="swatch">📝</div>
+      <div class="mov-info">
+        <div class="mov-titulo">${p.producto_nombre} ×${p.cantidad}</div>
+        <div class="mov-sub">${p.cliente || 'Sin cliente'} · ${fechaCorta(p.fecha)}</div>
+        ${p.notas ? `<div class="mov-sub" style="color:var(--berry-dark);font-weight:500;">${p.notas}</div>` : ''}
+      </div>
+      <div class="mov-derecha"><div class="mov-monto" style="font-size:12px;color:var(--ink-soft);">≈ ${dinero(p.precio_unitario * p.cantidad)}</div></div>
+      <button class="btn-borrar" title="Entregar" onclick="event.stopPropagation(); abrirEntregarPedido(${p.id})">✅</button>
+      <button class="btn-borrar" onclick="event.stopPropagation(); cancelarPedido(${p.id})">🗑️</button>
+    </div>`).join('');
+}
+
+async function cancelarPedido(id) {
+  if (!confirm('¿Querés cancelar este pedido?')) return;
+  try {
+    await api(`/api/pedidos/${id}`, {method: 'DELETE'});
+    cargarPedidos();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function abrirNuevoPedido() {
+  const select = document.getElementById('pedidoProducto');
+  select.innerHTML = '<option>Cargando…</option>';
+
+  productosParaSelect = await api('/api/productos');
+  select.innerHTML = productosParaSelect.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('')
+    + '<option value="__nuevo__">➕ Agregar producto nuevo</option>';
+
+  document.getElementById('pedidoCantidad').value = 1;
+  document.getElementById('pedidoCliente').value = '';
+  document.getElementById('pedidoNotas').value = '';
+  document.getElementById('pedidoError').style.display = 'none';
+
+  select.onchange = (e) => {
+    if (e.target.value === '__nuevo__') {
+      manejarNuevoProductoDesdePedido();
+    }
+  };
+
+  abrirHoja('hojaPedido', 'fondoHojaPedido');
+
+  // Si todavía no hay ningún producto cargado, forzamos el alta igual
+  // que en Compras (ver comentario en abrirNuevaCompra).
+  if (productosParaSelect.length === 0) {
+    await manejarNuevoProductoDesdePedido();
+  }
+}
+
+async function manejarNuevoProductoDesdePedido() {
+  cerrarHoja('hojaPedido', 'fondoHojaPedido');
+  await abrirProductoRapido();
+}
+
+async function abrirProductoRapido() {
+  const select = document.getElementById('prodRapidoCategoria');
+  select.innerHTML = '<option>Cargando…</option>';
+
+  const categorias = await api('/api/categorias');
+  pintarSelectCategoriasRapido(categorias);
+
+  document.getElementById('prodRapidoNombre').value = '';
+  document.getElementById('prodRapidoError').style.display = 'none';
+
+  abrirHoja('hojaProductoRapido', 'fondoHojaProductoRapido');
+
+  if (categorias.length === 0) {
+    await manejarNuevaCategoriaRapida();
+  }
+}
+
+function pintarSelectCategoriasRapido(categorias) {
+  const select = document.getElementById('prodRapidoCategoria');
+  select.innerHTML = categorias.map(c => `<option value="${c}">${c}</option>`).join('')
+    + '<option value="__nueva__">➕ Nueva categoría…</option>';
+}
+
+async function manejarNuevaCategoriaRapida() {
+  const select = document.getElementById('prodRapidoCategoria');
+  const nombre = prompt('Nombre de la nueva categoría:');
+
+  if (nombre && nombre.trim()) {
+    await api('/api/categorias', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({nombre})});
+    const categorias = await api('/api/categorias');
+    pintarSelectCategoriasRapido(categorias);
+    select.value = nombre.trim();
+  } else if (select.options.length > 1) {
+    select.selectedIndex = 0;
+  }
+}
+
+document.getElementById('prodRapidoCategoria').addEventListener('change', (e) => {
+  if (e.target.value === '__nueva__') {
+    manejarNuevaCategoriaRapida();
+  }
+});
+
+document.getElementById('btnGuardarProductoRapido').addEventListener('click', async () => {
+  const errorEl = document.getElementById('prodRapidoError');
+  errorEl.style.display = 'none';
+
+  try {
+    await api('/api/productos', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        nombre: document.getElementById('prodRapidoNombre').value,
+        categoria: document.getElementById('prodRapidoCategoria').value,
+        costo: 0,
+        precio_venta: 0,
+        stock: 0,
+        stock_minimo: 0
+      })
+    });
+
+    cerrarHoja('hojaProductoRapido', 'fondoHojaProductoRapido');
+    abrirNuevoPedido();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+document.getElementById('btnGuardarPedido').addEventListener('click', async () => {
+  const errorEl = document.getElementById('pedidoError');
+  errorEl.style.display = 'none';
+
+  const productoId = document.getElementById('pedidoProducto').value;
+
+  if (!productoId || productoId === '__nuevo__') {
+    errorEl.textContent = 'Seleccioná un producto.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    await api('/api/pedidos', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        producto_id: productoId,
+        cantidad: document.getElementById('pedidoCantidad').value,
+        cliente: document.getElementById('pedidoCliente').value,
+        notas: document.getElementById('pedidoNotas').value
+      })
+    });
+
+    cerrarHoja('hojaPedido', 'fondoHojaPedido');
+    cargarPedidos();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+// ---- Entregar pedido (lo convierte en venta) ----
+
+let pedidoIdParaEntregar = null;
+
+async function abrirEntregarPedido(pedidoId) {
+  const pedido = cachePedidos.find(p => p.id === pedidoId);
+  if (!pedido) return;
+
+  pedidoIdParaEntregar = pedidoId;
+
+  const [productos, metodos] = await Promise.all([
+    api('/api/productos'),
+    api('/api/metodos_pago')
+  ]);
+
+  const producto = productos.find(p => p.id === pedido.producto_id);
+
+  const selectMedio = document.getElementById('entregarMedioPago');
+  selectMedio.innerHTML = metodos.map(m => `<option value="${m}">${m}</option>`).join('');
+
+  document.getElementById('entregarInfo').textContent =
+    `${pedido.producto_nombre} ×${pedido.cantidad} · ${pedido.cliente || 'Sin cliente'}`;
+  document.getElementById('entregarPrecio').value = producto ? producto.precio_venta : 0;
+  document.getElementById('entregarError').style.display = 'none';
+
+  actualizarPagadoEntrega();
+  document.getElementById('entregarPrecio').oninput = actualizarPagadoEntrega;
+
+  abrirHoja('hojaEntregar', 'fondoHojaEntregar');
+}
+
+function actualizarPagadoEntrega() {
+  const pedido = cachePedidos.find(p => p.id === pedidoIdParaEntregar);
+  if (!pedido) return;
+  const precio = Number(document.getElementById('entregarPrecio').value) || 0;
+  const total = precio * pedido.cantidad;
+  document.getElementById('entregarPagado').value = total;
+  document.getElementById('entregarPagado').max = total;
+}
+
+document.getElementById('btnConfirmarEntrega').addEventListener('click', async () => {
+  const errorEl = document.getElementById('entregarError');
+  errorEl.style.display = 'none';
+
+  try {
+    await api(`/api/pedidos/${pedidoIdParaEntregar}/entregar`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        precio_unitario: document.getElementById('entregarPrecio').value,
+        medio_pago: document.getElementById('entregarMedioPago').value,
+        pagado: document.getElementById('entregarPagado').value
+      })
+    });
+
+    cerrarHoja('hojaEntregar', 'fondoHojaEntregar');
+    cargarPedidos();
+
+  } catch (error) {
+    errorEl.textContent = error.message;
+    errorEl.style.display = 'block';
+  }
+});
+
+// ============================================================
+// ARRANQUE
+// ============================================================
+
+cargarInicio();
+
+</script>
+</body>
+</html>
