@@ -848,11 +848,14 @@ async function cargarInicio() {
 
     const avisoInversionDiv = document.getElementById('avisoInversion');
     if (inversionInicial > 0) {
-      if (disponible >= inversionInicial) {
-        const gananciaNeta = disponible - inversionInicial;
+      // La inversión se recupera con lo cobrado menos los gastos extra.
+      // Las compras NO se restan acá: son justamente en lo que se usó la inversión.
+      const recuperado = recaudado - totalGastos;
+      if (recuperado >= inversionInicial) {
+        const gananciaNeta = recuperado - inversionInicial;
         avisoInversionDiv.innerHTML = `<div class="aviso" style="background:var(--sage-bg);border-color:#c7d6c2;">🎉 <div><strong>¡Recuperaste la inversión!</strong>A partir de acá es ganancia neta: ${dinero(gananciaNeta)}</div></div>`;
       } else {
-        const falta = inversionInicial - disponible;
+        const falta = inversionInicial - recuperado;
         avisoInversionDiv.innerHTML = `<div class="aviso">📈 <div><strong>Todavía recuperando la inversión</strong>Te faltan ${dinero(falta)} de ${dinero(inversionInicial)}</div></div>`;
       }
     } else {
